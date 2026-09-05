@@ -283,7 +283,7 @@ function camTile(name){
       <div class="expand">click to open</div>
       <img alt="" loading="lazy">
       <div class="fage"></div>
-      <div class="stale"><b>Frame is stale</b><span>the site has stopped sending</span></div>
+      <div class="stale"><b class="sh">No recent frame</b><span class="sm">-</span></div>
     </div>
     <div class="meters">
       <div class="m"><label>flame</label><div class="bar f"><i></i></div><div class="v">0%</div></div>
@@ -452,11 +452,28 @@ function renderCams(st){
 
     const f = (st.frames||{})[c.name];
     const img = el.querySelector("img"), shot = el.querySelector(".shot");
+    // Two very different failures used to share one message. If the site is
+    // offline we genuinely do not know anything; if the site is fine but the
+    // camera is not delivering, that is a camera fault and says so, because
+    // "the site has stopped sending" sends someone to check the wrong box.
+    const sh = el.querySelector(".stale .sh"), sm = el.querySelector(".stale .sm");
+    if(offline){
+      sh.textContent = "Status unknown";
+      sm.textContent = "the site has stopped reporting to this dashboard";
+    } else if(!conn){
+      sh.textContent = "Camera offline";
+      sm.textContent = c.source?.reconnects
+        ? `no video from this camera - ${c.source.reconnects} reconnect attempts`
+        : "no video from this camera";
+    } else {
+      sh.textContent = "No recent frame";
+      sm.textContent = "the camera is connected but frames have stopped arriving";
+    }
     if(f){
       const bust = Math.floor(Date.now()/2000);
       img.src = q(`/api/public/frame/${encodeURIComponent(c.name)}?t=${bust}`);
       el.querySelector(".fage").textContent = "frame " + ago(f.age_s) + " old";
-      shot.classList.toggle("isstale", offline || f.age_s > 90);
+      shot.classList.toggle("isstale", offline || !conn || f.age_s > 90);
     } else {
       el.querySelector(".fage").textContent = "no frame yet";
       shot.classList.add("isstale");
