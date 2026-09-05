@@ -414,16 +414,38 @@ function mevCard(e){
 // picture.
 function attachVideo(img, name){
   const streamUrl = `/api/stream/${encodeURIComponent(name)}?fps=6`;
-  let gotFrame = false, polling = null;
+  let gotFrame = false, timer = null, delay = 320, failures = 0;
   img.onload = () => { gotFrame = true; };
   img.onerror = () => startPolling();
   img.src = streamUrl;
+
+  // Poll with backoff, not a fixed 3-per-second forever.
+  //
+  // The snapshot endpoint correctly answers 503 while a camera has never
+  // delivered a frame. The old fixed-interval fallback then hammered it three
+  // times a second for as long as the page was open, which on an offline camera
+  // meant thousands of failed requests and a browser console so full of 503s
+  // that any real error was invisible. Backing off to once every 10s keeps the
+  // tile live-updating when the camera returns, without the flood.
   function startPolling(){
-    if(polling) return;
-    img.onload = null; img.onerror = null;
-    polling = setInterval(() => {
-      img.src = `/api/snapshot/${encodeURIComponent(name)}?t=${Date.now()}`;
-    }, 320);
+    if(timer) return;
+    img.onload = null;
+    img.onerror = null;
+    const tick = () => {
+      const probe = new Image();
+      probe.onload = () => {
+        failures = 0; delay = 320;
+        img.src = probe.src;
+        timer = setTimeout(tick, delay);
+      };
+      probe.onerror = () => {
+        failures++;
+        delay = Math.min(10000, 320 * Math.pow(2, Math.min(failures, 5)));
+        timer = setTimeout(tick, delay);
+      };
+      probe.src = `/api/snapshot/${encodeURIComponent(name)}?t=${Date.now()}`;
+    };
+    tick();
   }
   setTimeout(() => { if(!gotFrame) startPolling(); }, 3500);
 }

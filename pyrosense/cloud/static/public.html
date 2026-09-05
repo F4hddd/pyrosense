@@ -456,18 +456,19 @@ function renderCams(st){
     // offline we genuinely do not know anything; if the site is fine but the
     // camera is not delivering, that is a camera fault and says so, because
     // "the site has stopped sending" sends someone to check the wrong box.
-    const sh = el.querySelector(".stale .sh"), sm = el.querySelector(".stale .sm");
+    const staleHead = el.querySelector(".stale .sh");
+    const staleSub  = el.querySelector(".stale .sm");
     if(offline){
-      sh.textContent = "Status unknown";
-      sm.textContent = "the site has stopped reporting to this dashboard";
+      staleHead.textContent = "Status unknown";
+      staleSub.textContent = "the site has stopped reporting to this dashboard";
     } else if(!conn){
-      sh.textContent = "Camera offline";
-      sm.textContent = c.source?.reconnects
+      staleHead.textContent = "Camera offline";
+      staleSub.textContent = c.source?.reconnects
         ? `no video from this camera - ${c.source.reconnects} reconnect attempts`
         : "no video from this camera";
     } else {
-      sh.textContent = "No recent frame";
-      sm.textContent = "the camera is connected but frames have stopped arriving";
+      staleHead.textContent = "No recent frame";
+      staleSub.textContent = "the camera is connected but frames have stopped arriving";
     }
     if(f){
       const bust = Math.floor(Date.now()/2000);
