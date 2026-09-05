@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PyroSense — Fire Watch</title>
+<style>
+  :root{
+    --bg:#0b0d11; --panel:#13161c; --panel2:#181c24; --line:#242a35;
+    --tx:#e7eaf0; --mut:#8b93a3; --dim:#5b6373;
+    --flame:#ff5a1f; --smoke:#93a3b8; --ok:#34d399; --warn:#fbbf24; --bad:#f43f5e;
+    --accent:#ff6b35;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+
+  header{display:flex;align-items:center;gap:18px;padding:12px 20px;
+    background:linear-gradient(180deg,#161a21,#11141a);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:20}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:.3px}
+  .flamemark{width:22px;height:22px;border-radius:6px;
+    background:radial-gradient(circle at 50% 78%,#ffd166,#ff6b35 45%,#c1121f);
+    box-shadow:0 0 14px rgba(255,107,53,.55)}
+  .brand small{color:var(--mut);font-weight:400;letter-spacing:0}
+  .pills{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+  .pill{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+    background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--mut)}
+  .pill b{color:var(--tx);font-weight:600}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .dot.off{background:var(--bad)}
+  .dot.warn{background:var(--warn)}
+
+  main{display:grid;grid-template-columns:1fr 380px;gap:16px;padding:16px;
+    align-items:start;max-width:1800px;margin:0 auto}
+  @media(max-width:1100px){main{grid-template-columns:1fr}}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .cam{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;transition:border-color .2s, box-shadow .2s}
+  .cam.alarm{border-color:var(--flame);box-shadow:0 0 0 1px var(--flame),0 0 26px rgba(255,90,31,.28);
+    animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 1px var(--flame),0 0 22px rgba(255,90,31,.22)}
+    50%{box-shadow:0 0 0 1px var(--flame),0 0 34px rgba(255,90,31,.45)}}
+  .cam.watch{border-color:#8a6a2a}
+  .cam .head{display:flex;align-items:center;gap:8px;padding:9px 12px;
+    border-bottom:1px solid var(--line);background:var(--panel2)}
+  .cam .head .nm{font-weight:600;font-size:13px}
+  .cam .head .loc{color:var(--dim);font-size:11px}
+  .cam .head .rt{margin-left:auto;font-size:11px;color:var(--mut)}
+  .shot{position:relative;background:#000;aspect-ratio:16/9;display:block;width:100%}
+  .shot img{width:100%;height:100%;object-fit:cover;display:block}
+  .badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:6px;
+    font-size:11px;font-weight:700;letter-spacing:.4px;background:rgba(0,0,0,.62);
+    border:1px solid var(--line);color:var(--mut)}
+  .badge.fire{background:var(--flame);color:#160800;border-color:var(--flame)}
+  .badge.smoke{background:#8b98aa;color:#0d1117;border-color:#8b98aa}
+  .zonetag{position:absolute;bottom:8px;left:8px;font-size:10px;color:#cfd6e2;
+    background:rgba(0,0,0,.55);padding:2px 7px;border-radius:5px}
+  .meters{padding:10px 12px 12px;display:grid;gap:7px}
+  .m{display:grid;grid-template-columns:44px 1fr 40px;align-items:center;gap:8px;
+    font-size:11px;color:var(--mut)}
+  .bar{height:6px;background:#1e2229;border-radius:3px;overflow:hidden;position:relative}
+  .bar i{display:block;height:100%;width:0;border-radius:3px;transition:width .35s ease}
+  .bar.f i{background:linear-gradient(90deg,#7a2d0d,var(--flame))}
+  .bar.s i{background:linear-gradient(90deg,#3f4a58,#9fb0c4)}
+  .bar .th{position:absolute;top:-2px;bottom:-2px;width:1px;background:#5f6a7d}
+  .m .v{text-align:right;color:var(--tx);font-variant-numeric:tabular-nums}
+  .foot{display:flex;gap:12px;padding:0 12px 11px;font-size:10.5px;color:var(--dim)}
+  .foot span b{color:var(--mut);font-weight:600}
+
+  aside{position:sticky;top:64px;display:grid;gap:14px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .panel h2{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.7px;
+    text-transform:uppercase;color:var(--mut);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:8px}
+  .panel h2 .n{margin-left:auto;background:var(--panel2);border:1px solid var(--line);
+    padding:1px 7px;border-radius:999px;font-size:11px;letter-spacing:0}
+  .feed{max-height:calc(100vh - 260px);overflow-y:auto}
+  .ev{padding:11px 14px;border-bottom:1px solid var(--line);display:grid;gap:7px}
+  .ev:last-child{border-bottom:0}
+  .ev .top{display:flex;align-items:center;gap:8px;font-size:12px}
+  .ev .k{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.4px}
+  .ev .k.flame{background:rgba(255,90,31,.16);color:var(--flame);border:1px solid rgba(255,90,31,.4)}
+  .ev .k.smoke{background:rgba(147,163,184,.14);color:#b6c2d2;border:1px solid #46505f}
+  .ev .cam2{font-weight:600}
+  .ev .t{margin-left:auto;color:var(--dim);font-size:11px}
+  .ev .thumb{width:100%;border-radius:7px;border:1px solid var(--line);display:block}
+  .ev .why{font-size:12px;color:var(--mut);line-height:1.45}
+  .ev .adj{font-size:12px;padding:8px 10px;border-radius:7px;line-height:1.45;
+    background:#101820;border-left:2px solid #2b3a4a;color:#c3cede}
+  .ev .adj.ok{border-left-color:var(--ok)}
+  .ev .adj.sup{border-left-color:var(--dim);color:var(--dim)}
+  .ev .acts{display:flex;gap:6px}
+  .btn{flex:1;padding:5px 8px;font-size:11px;border-radius:6px;cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line);color:var(--mut)}
+  .btn:hover{border-color:#3a4454;color:var(--tx)}
+  .btn.good:hover{border-color:var(--ok);color:var(--ok)}
+  .btn.bad:hover{border-color:var(--bad);color:var(--bad)}
+  .btn.sel{background:#1c2530;color:var(--tx);border-color:#3a4454}
+
+  .kv{display:grid;grid-template-columns:1fr auto;gap:5px 12px;padding:12px 14px;font-size:12px}
+  .kv span{color:var(--mut)}
+  .kv b{font-weight:600;font-variant-numeric:tabular-nums}
+  .empty{padding:26px 14px;text-align:center;color:var(--dim);font-size:12.5px}
+  .spark{width:100%;height:34px;display:block}
+  .ev video,.mev video{width:100%;border-radius:7px;border:1px solid var(--line);
+    display:block;background:#000}
+  .clipbar{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--dim)}
+  .clipbar a{color:var(--mut);text-decoration:none;border-bottom:1px dotted var(--line)}
+  .clipbar a:hover{color:var(--tx)}
+  .cam{cursor:pointer}
+  .cam:hover{border-color:#3a4454}
+  .cam .expand{position:absolute;top:8px;right:8px;font-size:10px;color:#cfd6e2;
+    background:rgba(0,0,0,.6);padding:2px 7px;border-radius:5px;z-index:3;opacity:0;
+    transition:opacity .15s}
+  .cam:hover .expand{opacity:1}
+
+  .backdrop{position:fixed;inset:0;background:rgba(6,8,11,.8);z-index:60;display:none;
+    align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto}
+  .backdrop.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    width:min(1120px,100%);overflow:hidden;box-shadow:0 30px 80px -30px #000}
+  .modal .mhead{display:flex;align-items:center;gap:10px;padding:13px 16px;
+    border-bottom:1px solid var(--line);background:var(--panel2)}
+  .modal .mt{font-weight:650;font-size:15px}
+  .modal .ml{color:var(--dim);font-size:12px}
+  .modal .x{margin-left:auto;background:transparent;border:1px solid var(--line);
+    color:var(--mut);border-radius:7px;width:30px;height:30px;cursor:pointer;font-size:16px}
+  .modal .x:hover{color:var(--tx);border-color:#3a4454}
+  .mbody{display:grid;grid-template-columns:1.4fr 1fr}
+  @media(max-width:900px){.mbody{grid-template-columns:1fr}}
+  .mleft{padding:16px;border-right:1px solid var(--line)}
+  .mshot{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9}
+  .mshot img{width:100%;height:100%;object-fit:contain;display:block}
+  .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:14px}
+  .mcell{background:var(--panel2);padding:9px 11px}
+  .mcell .l{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .mcell .v2{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+  .mctrl{margin-top:14px;border:1px solid var(--line);border-radius:9px;
+    background:var(--panel2);padding:12px}
+  .mctrl h4{margin:0 0 9px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--dim);font-weight:600}
+  .mrow{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--mut);
+    padding:5px 0}
+  .mrow .sp{margin-left:auto}
+  .tgl{position:relative;width:40px;height:22px;border-radius:999px;background:#232a35;
+    border:1px solid var(--line);cursor:pointer;transition:background .18s;flex:none}
+  .tgl.on{background:rgba(255,90,31,.55);border-color:var(--flame)}
+  .tgl i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:#8b93a3;transition:transform .18s}
+  .tgl.on i{transform:translateX(18px);background:#fff}
+  .mright{padding:16px;max-height:72vh;overflow-y:auto}
+  .mright h3{margin:0 0 10px;font-size:11px;letter-spacing:.8px;text-transform:uppercase;
+    color:var(--mut)}
+  .mev{border:1px solid var(--line);border-radius:9px;padding:11px;margin-bottom:11px;
+    display:grid;gap:8px;background:var(--panel2)}
+  .banner{margin:0 16px;padding:9px 14px;border-radius:9px;font-size:12.5px;
+    background:rgba(251,191,36,.09);border:1px solid rgba(251,191,36,.32);color:#e8cf94}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><div class="flamemark"></div>
+    <div>PyroSense <small id="siteName">— live fire &amp; smoke watch</small></div>
+  </div>
+  <div class="pills">
+    <div class="pill"><span class="dot" id="dLink"></span> <b id="pLink">connecting</b></div>
+    <div class="pill">cameras <b id="pCams">–</b></div>
+    <div class="pill">stage&nbsp;1 <b id="pMs">–</b></div>
+    <div class="pill">gate <b id="pGate">–</b></div>
+    <div class="pill"><span class="dot" id="dAdj"></span> adjudicator <b id="pAdj">–</b></div>
+    <div class="pill">uptime <b id="pUp">–</b></div>
+  </div>
+</header>
+
+<div id="dryBanner" class="banner" style="display:none;margin-top:12px">
+  <b>Dry-run mode.</b> Alerts are logged locally and shown here, but nothing is sent to
+  webhooks, email, Telegram or MQTT. Set <code class="mono">alerts.dry_run: false</code> to go live.
+</div>
+
+<main>
+  <section>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <aside>
+    <div class="panel">
+      <h2>Alert feed <span class="n" id="evCount">0</span></h2>
+      <div class="feed" id="feed"><div class="empty">No alerts yet. Watching…</div></div>
+    </div>
+    <div class="panel">
+      <h2>Pipeline</h2>
+      <div class="kv" id="pipeline"></div>
+    </div>
+  </aside>
+</main>
+
+<div class="backdrop" id="backdrop">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="mhead">
+      <span class="dot" id="mDot"></span>
+      <span class="mt" id="mTitle">camera</span>
+      <span class="ml" id="mLoc"></span>
+      <button class="x" id="mClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="mbody">
+      <div class="mleft">
+        <div class="mshot"><img id="mImg" alt=""></div>
+        <div class="mgrid" id="mGrid"></div>
+        <div class="mctrl">
+          <h4>Controls</h4>
+          <div class="mrow">Smoke detection
+            <span class="sp"></span>
+            <span class="tgl" id="mSmoke"><i></i></span></div>
+          <div class="mrow" style="font-size:11.5px;color:var(--dim);line-height:1.45">
+            Turn smoke off on cameras looking at pale sheeting, dust or bare
+            surfaces. Flame detection is unaffected.
+          </div>
+          <div class="mrow" style="border-top:1px solid var(--line);padding-top:9px">
+            <a id="mFull" href="#" target="_blank"
+               style="color:var(--mut);font-size:12px">open full-size frame</a>
+            <span class="sp"></span>
+            <a id="mDl" href="#" download
+               style="color:var(--mut);font-size:12px">download still</a>
+          </div>
+        </div>
+      </div>
+      <div class="mright">
+        <h3>Recordings for this camera</h3>
+        <div id="mEvents"><div class="empty">No recordings yet.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmtAgo = ts => { const d = Date.now()/1000 - ts;
+  if(d<60) return Math.max(0,Math.round(d))+"s ago";
+  if(d<3600) return Math.round(d/60)+"m ago"; return Math.round(d/3600)+"h ago"; };
+const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
+
+let cams = new Map(), evs = [], lastStatus = null;
+
+function camTile(c){
+  const el = document.createElement("div");
+  el.className = "cam"; el.id = "cam-" + c.name;
+  el.innerHTML = `
+    <div class="head">
+      <span class="dot"></span>
+      <span class="nm"></span><span class="loc"></span>
+      <span class="rt"></span>
+    </div>
+    <div class="shot">
+      <img alt="" loading="lazy">
+      <div class="badge">watching</div>
+      <div class="zonetag" style="display:none"></div>
+    </div>
+    <div class="meters">
+      <div class="m"><label>flame</label>
+        <div class="bar f"><i></i><div class="th" style="left:72%"></div></div><div class="v">0%</div></div>
+      <div class="m"><label>smoke</label>
+        <div class="bar s"><i></i><div class="th" style="left:70%"></div></div><div class="v">0%</div></div>
+      <svg class="spark" viewBox="0 0 300 34" preserveAspectRatio="none">
+        <polyline class="pf" fill="none" stroke="#ff5a1f" stroke-width="1.4" points=""/>
+        <polyline class="ps" fill="none" stroke="#8fa0b4" stroke-width="1.2" points=""/>
+        <line x1="0" y1="9.5" x2="300" y2="9.5" stroke="#39424f" stroke-width="1" stroke-dasharray="3 4"/>
+      </svg>
+    </div>
+    <div class="foot">
+      <span><b class="fps">–</b> fps</span>
+      <span><b class="ms">–</b> ms/frame</span>
+      <span><b class="gt">–</b> gated</span>
+      <span class="err" style="color:#f43f5e"></span>
+    </div>`;
+  attachVideo(el.querySelector("img"), c.name);
+  const exp = document.createElement("div");
+  exp.className = "expand"; exp.textContent = "click to open";
+  el.querySelector(".shot").appendChild(exp);
+  el.addEventListener("click", () => openCamera(c.name));
+  el.tabIndex = 0;
+  el.addEventListener("keydown", e => {
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); openCamera(c.name); }
+  });
+  return el;
+}
+
+/* ---------------- camera detail ---------------- */
+let openCam = null, mTimer = null, mEvSig = "";
+
+function openCamera(name){
+  openCam = name;
+  $("#backdrop").classList.add("open");
+  document.body.style.overflow = "hidden";
+  // Live MJPEG here rather than polled stills: this console is on the LAN, so
+  // there is no reason to look at anything but the real thing.
+  $("#mImg").src = `/api/stream/${encodeURIComponent(name)}?fps=8`;
+  $("#mFull").href = `/api/snapshot/${encodeURIComponent(name)}`;
+  $("#mDl").href = `/api/snapshot/${encodeURIComponent(name)}`;
+  $("#mDl").setAttribute("download", name + ".jpg");
+  mEvSig = "";
+  refreshModal();
+  clearInterval(mTimer); mTimer = setInterval(refreshModal, 2500);
+}
+function closeCamera(){
+  openCam = null;
+  $("#backdrop").classList.remove("open");
+  document.body.style.overflow = "";
+  clearInterval(mTimer); mTimer = null;
+  $("#mImg").src = "";            // drop the MJPEG connection
+  $("#mEvents").innerHTML = "";   // and stop buffering any clip
+}
+$("#mClose").onclick = closeCamera;
+$("#backdrop").addEventListener("click", e => {
+  if(e.target === $("#backdrop")) closeCamera();
+});
+document.addEventListener("keydown", e => { if(e.key === "Escape" && openCam) closeCamera(); });
+
+async function refreshModal(){
+  if(!openCam) return;
+  let d;
+  try{ d = await fetch(`/api/camera/${encodeURIComponent(openCam)}`).then(r=>r.json()); }
+  catch(err){ return; }
+  const c = d.status, cfg = d.config;
+  $("#mTitle").textContent = c.name;
+  $("#mLoc").textContent = c.location || "";
+  $("#mDot").className = "dot " + (c.source?.connected ? "on" : "off");
+
+  const alarm = c.alarm?.flame ? "FLAME" : c.alarm?.smoke ? "SMOKE" : "none";
+  $("#mGrid").innerHTML = `
+    <div class="mcell"><div class="l">Flame</div><div class="v2" style="color:var(--flame)">
+      ${Math.round((c.score?.flame||0)*100)}%</div></div>
+    <div class="mcell"><div class="l">Smoke</div><div class="v2">
+      ${cfg.detect_smoke ? Math.round((c.score?.smoke||0)*100)+"%" : "off"}</div></div>
+    <div class="mcell"><div class="l">Alarm</div><div class="v2">${alarm}</div></div>
+    <div class="mcell"><div class="l">Stream</div><div class="v2">${c.source?.fps ?? "-"} fps</div></div>
+    <div class="mcell"><div class="l">Detector cost</div><div class="v2">${c.proc_ms} ms</div></div>
+    <div class="mcell"><div class="l">Frames gated</div><div class="v2">${Math.round((c.gate_rate||0)*100)}%</div></div>
+    <div class="mcell"><div class="l">Frames seen</div><div class="v2">${c.frames}</div></div>
+    <div class="mcell"><div class="l">Reconnects</div><div class="v2">${c.source?.reconnects ?? 0}</div></div>
+    <div class="mcell"><div class="l">Flame threshold</div><div class="v2">${cfg.flame_threshold}</div></div>
+    <div class="mcell"><div class="l">Clip length</div><div class="v2">10s + ${cfg.postroll_s}s</div></div>
+    ${c.source?.error ? `<div class="mcell" style="grid-column:1/-1">
+      <div class="l">Stream error</div><div class="v2"
+      style="color:var(--bad);font-size:11.5px;font-weight:400">${esc(c.source.error)}</div></div>` : ""}`;
+
+  const tg = $("#mSmoke");
+  tg.className = "tgl" + (cfg.detect_smoke ? " on" : "");
+  tg.onclick = async () => {
+    const next = !cfg.detect_smoke;
+    tg.className = "tgl" + (next ? " on" : "");
+    await fetch(`/api/camera/${encodeURIComponent(openCam)}/smoke?enabled=${next}`,
+                {method:"POST"});
+    refreshModal();
+  };
+
+  const sig = (d.events||[]).map(e => e.id + (e.clip?"c":"") + e.verdict).join(",");
+  if(sig !== mEvSig){
+    mEvSig = sig;
+    const host = $("#mEvents");
+    host.innerHTML = "";
+    if(!d.events.length) host.innerHTML = '<div class="empty">No recordings yet.</div>';
+    else d.events.forEach(e => host.appendChild(mevCard(e)));
+  }
+}
+
+function clipName(path){
+  if(!path) return "";
+  return path.split(/[\\/]/).pop();
+}
+
+function mevCard(e){
+  const d = document.createElement("div");
+  d.className = "mev";
+  const cn = clipName(e.clip);
+  d.innerHTML = `
+    <div class="top">
+      <span class="k ${e.kind}">${(e.kind||"").toUpperCase()}</span>
+      <span style="color:var(--mut)">${Math.round((e.score||0)*100)}%</span>
+      <span class="t">${e.started_iso || ""}</span>
+    </div>
+    ${cn ? `<video controls preload="none" playsinline
+              poster="${e.snapshot ? '/api/media/'+e.id+'.jpg' : ''}"
+              src="/api/media/${encodeURIComponent(cn)}"></video>
+            <div class="clipbar"><span>${e.clip_seconds||""}s replay - before and after detection</span>
+              <a href="/api/media/${encodeURIComponent(cn)}" download>download</a></div>`
+        : (e.snapshot ? `<img class="thumb" src="/api/media/${e.id}.jpg" alt="">` : "")}
+    <div class="why">${esc(e.reason||"")}</div>
+    ${e.adjudication ? `<div class="adj">${esc(e.adjudication)}</div>` : ""}
+    <div class="acts">
+      <button class="btn good" data-v="confirmed">Real fire</button>
+      <button class="btn bad" data-v="dismissed">False alarm</button>
+    </div>`;
+  d.querySelectorAll(".btn").forEach(b => b.onclick = async () => {
+    await fetch(`/api/events/${e.id}/verdict?value=${b.dataset.v}`, {method:"POST"});
+    d.querySelectorAll(".btn").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel");
+  });
+  if(e.verdict === "confirmed") d.querySelector('[data-v="confirmed"]').classList.add("sel");
+  if(e.verdict === "dismissed") d.querySelector('[data-v="dismissed"]').classList.add("sel");
+  return d;
+}
+
+// MJPEG in an <img> is the cheapest possible live preview and works in every
+// desktop browser. A few embedded webviews decline to render
+// multipart/x-mixed-replace, though, and there the tile just stays black - so if
+// the stream has not produced a frame within a few seconds we fall back to
+// polling single JPEGs. Same endpoint family, slightly more requests, always a
+// picture.
+function attachVideo(img, name){
+  const streamUrl = `/api/stream/${encodeURIComponent(name)}?fps=6`;
+  let gotFrame = false, polling = null;
+  img.onload = () => { gotFrame = true; };
+  img.onerror = () => startPolling();
+  img.src = streamUrl;
+  function startPolling(){
+    if(polling) return;
+    img.onload = null; img.onerror = null;
+    polling = setInterval(() => {
+      img.src = `/api/snapshot/${encodeURIComponent(name)}?t=${Date.now()}`;
+    }, 320);
+  }
+  setTimeout(() => { if(!gotFrame) startPolling(); }, 3500);
+}
+
+function poly(hist, idx){
+  if(!hist || !hist.length) return "";
+  const n = hist.length, step = 300/Math.max(1,n-1);
+  return hist.map((h,i)=> `${(i*step).toFixed(1)},${(34-h[idx]*34).toFixed(1)}`).join(" ");
+}
+
+function renderCams(st){
+  const grid = $("#grid");
+  for(const c of st.cameras){
+    let el = cams.get(c.name);
+    if(!el){ el = camTile(c); cams.set(c.name, el); grid.appendChild(el); }
+    const alarm = c.alarm && (c.alarm.flame || c.alarm.smoke);
+    const hot = Math.max(c.score.flame||0, c.score.smoke||0);
+    el.className = "cam" + (alarm ? " alarm" : (hot>0.4 ? " watch" : ""));
+    el.querySelector(".nm").textContent = c.name;
+    el.querySelector(".loc").textContent = c.location ? "· "+c.location : "";
+    const conn = c.source && c.source.connected;
+    el.querySelector(".head .dot").className = "dot " + (conn ? "on":"off");
+    el.querySelector(".rt").textContent = conn ? "live" : (c.source.error? "error":"offline");
+
+    const b = el.querySelector(".badge");
+    if(c.alarm && c.alarm.flame){ b.className="badge fire"; b.textContent="FLAME"; }
+    else if(c.alarm && c.alarm.smoke){ b.className="badge smoke"; b.textContent="SMOKE"; }
+    else if(!c.armed){ b.className="badge"; b.textContent="disarmed · schedule"; }
+    else if(hot>0.4){ b.className="badge"; b.textContent="assessing"; }
+    else { b.className="badge"; b.textContent="watching"; }
+
+    const zt = el.querySelector(".zonetag");
+    if(c.zones && c.zones.length){
+      zt.style.display="";
+      zt.textContent = (c.armed ? "zones armed: " : "zones off duty: ") + c.zones.join(", ");
+    }
+
+    const bars = el.querySelectorAll(".bar i"), vals = el.querySelectorAll(".v");
+    bars[0].style.width = ((c.score.flame||0)*100).toFixed(0)+"%";
+    bars[1].style.width = ((c.score.smoke||0)*100).toFixed(0)+"%";
+    vals[0].textContent = Math.round((c.score.flame||0)*100)+"%";
+    vals[1].textContent = Math.round((c.score.smoke||0)*100)+"%";
+
+    el.querySelector(".pf").setAttribute("points", poly(c.history,1));
+    el.querySelector(".ps").setAttribute("points", poly(c.history,2));
+    el.querySelector(".fps").textContent = (c.source.fps ?? "–");
+    el.querySelector(".ms").textContent  = c.proc_ms;
+    el.querySelector(".gt").textContent  = Math.round((c.gate_rate||0)*100)+"%";
+    el.querySelector(".err").textContent = c.error || (c.source.error||"").slice(0,60);
+  }
+}
+
+function renderStatus(st){
+  lastStatus = st;
+  $("#pCams").textContent = st.cameras.filter(c=>c.source && c.source.connected).length
+    + "/" + st.cameras.length;
+  const ms = st.cameras.length
+    ? (st.cameras.reduce((a,c)=>a+(c.proc_ms||0),0)/st.cameras.length) : 0;
+  $("#pMs").textContent = ms.toFixed(1)+" ms";
+  const gr = st.cameras.length
+    ? (st.cameras.reduce((a,c)=>a+(c.gate_rate||0),0)/st.cameras.length) : 0;
+  $("#pGate").textContent = Math.round(gr*100)+"%";
+  $("#pUp").textContent = Math.round((st.uptime_s||0)/60)+"m";
+  const a = st.adjudicator||{};
+  $("#dAdj").className = "dot " + (a.enabled ? "on":"warn");
+  $("#pAdj").textContent = a.enabled ? (a.model||"on") : "off";
+  $("#dryBanner").style.display = st.dry_run ? "" : "none";
+
+  const nz = st.neural||{};
+  $("#pipeline").innerHTML = `
+    <span>Stage 0 · motion gate</span><b>${Math.round(gr*100)}% of frames skipped</b>
+    <span>Stage 1 · physics + temporal</span><b>${ms.toFixed(1)} ms/frame</b>
+    <span>Stage 2 · neural verifier</span><b>${nz.available? nz.loaded.join(", ") : "not loaded"}</b>
+    <span>Stage 3 · adjudication</span><b>${a.enabled? (a.calls_last_hour+"/"+a.budget+" this hour") : "disabled"}</b>
+    <span>Events recorded</span><b>${st.events_total}</b>
+    <span>Delivery</span><b>${st.dry_run ? "dry-run" : (st.delivery||[]).filter(d=>d.ok).length+" ok"}</b>`;
+  renderCams(st);
+}
+
+function evCard(e, adj, sent){
+  const d = document.createElement("div");
+  d.className = "ev"; d.dataset.id = e.id;
+  const cls = e.kind === "flame" ? "flame" : "smoke";
+  let adjHtml = "";
+  if(e.adjudication){
+    const supp = sent === false;
+    adjHtml = `<div class="adj ${supp?"sup":"ok"}">${supp?"⊘ ":"✓ "}${esc(e.adjudication)}</div>`;
+  }
+  d.innerHTML = `
+    <div class="top">
+      <span class="k ${cls}">${e.kind.toUpperCase()}</span>
+      <span class="cam2">${esc(e.camera)}</span>
+      <span style="color:var(--mut)">${Math.round(e.score*100)}%</span>
+      <span class="t">${fmtAgo(e.started)}</span>
+    </div>
+    ${e.clip
+      ? `<video controls preload="none" playsinline
+            poster="${e.snapshot ? '/api/media/'+e.id+'.jpg' : ''}"
+            src="/api/media/${encodeURIComponent((e.clip||'').split(/[\\/]/).pop())}"></video>
+         <div class="clipbar"><span>${e.clip_seconds||""}s replay</span>
+           <a href="#" class="openc">open camera</a></div>`
+      : (e.snapshot ? `<img class="thumb" src="/api/media/${e.id}.jpg" alt="">` : "")}
+    <div class="why">${esc(e.reason)}</div>
+    ${adjHtml}
+    <div class="acts">
+      <button class="btn good" data-v="confirmed">Real fire</button>
+      <button class="btn bad" data-v="dismissed">False alarm</button>
+    </div>`;
+  d.querySelectorAll(".btn").forEach(b => b.onclick = async () => {
+    await fetch(`/api/events/${e.id}/verdict?value=${b.dataset.v}`, {method:"POST"});
+    d.querySelectorAll(".btn").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel");
+  });
+  if(e.verdict === "confirmed") d.querySelector('[data-v="confirmed"]').classList.add("sel");
+  if(e.verdict === "dismissed") d.querySelector('[data-v="dismissed"]').classList.add("sel");
+  const oc = d.querySelector(".openc");
+  if(oc) oc.onclick = ev => { ev.preventDefault(); openCamera(e.camera); };
+  return d;
+}
+
+function addEvent(e, adj, sent){
+  const feed = $("#feed");
+  if(feed.querySelector(".empty")) feed.innerHTML = "";
+  feed.prepend(evCard(e, adj, sent));
+  while(feed.children.length > 40) feed.removeChild(feed.lastChild);
+  $("#evCount").textContent = feed.children.length;
+}
+
+async function boot(){
+  try{
+    const [st, ev] = await Promise.all([
+      fetch("/api/status").then(r=>r.json()),
+      fetch("/api/events?limit=25").then(r=>r.json())
+    ]);
+    renderStatus(st);
+    ev.slice().reverse().forEach(e => addEvent(e, null, e.verdict !== "dismissed"));
+  }catch(err){ console.error(err); }
+
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen  = () => { $("#dLink").className="dot on"; $("#pLink").textContent="live"; };
+  ws.onclose = () => { $("#dLink").className="dot off"; $("#pLink").textContent="reconnecting";
+                       setTimeout(boot, 3000); };
+  ws.onmessage = m => {
+    const d = JSON.parse(m.data);
+    if(d.type === "status" || d.type === "hello") renderStatus(d.status);
+    if(d.type === "event") addEvent(d.event, d.adjudication, d.sent);
+  };
+}
+boot();
+setInterval(()=>document.querySelectorAll(".ev .t").forEach(el=>{}), 15000);
+</script>
+</body>
+</html>

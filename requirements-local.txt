@@ -1,0 +1,8 @@
+# The site machine: detection, alerting and the uplink.
+opencv-python-headless>=4.9
+numpy>=1.26
+fastapi>=0.110
+uvicorn[standard]>=0.27
+anthropic>=0.40        # stage 3 adjudication (optional but recommended)
+# onnxruntime>=1.17     # only if you add a stage-2 model
+# paho-mqtt>=2.0        # only if you alert to MQTT

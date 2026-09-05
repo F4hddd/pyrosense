@@ -1,0 +1,56 @@
+# Render blueprint for the PyroSense public mirror.
+#
+# This deploys ONLY the cloud dashboard. Detection stays on the machine at the
+# site - see DEPLOY.md. Nothing here can reach your cameras, and no camera
+# credential belongs in this file.
+#
+#   1. Push this repo to GitHub
+#   2. Render -> New -> Blueprint -> pick the repo
+#   3. Set the secrets marked sync:false below in the Render dashboard
+#   4. Put the same PYRO_INGEST_TOKEN in your local pyrosense config
+services:
+  - type: web
+    name: pyrosense-mirror
+    runtime: python
+    plan: starter          # free works, but see the spin-down note in DEPLOY.md
+    region: frankfurt      # pick the region nearest the site
+    buildCommand: pip install -r requirements-cloud.txt
+    startCommand: uvicorn pyrosense.cloud.server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+    # A small disk keeps the public incident history across redeploys. Without
+    # it the mirror still works, it just starts empty after each deploy - the
+    # authoritative event log always lives on the site machine either way.
+    disk:
+      name: pyrosense-data
+      mountPath: /var/data
+      sizeGB: 1
+
+    envVars:
+      - key: PYRO_DATA_DIR
+        value: /var/data
+      - key: PYRO_SITE_NAME
+        value: Home Workshop
+      - key: PYRO_STALE_S
+        value: "45"
+      - key: PYRO_OFFLINE_S
+        value: "180"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+      # ---- secrets: set these in the Render dashboard, not in git ----
+      - key: PYRO_INGEST_TOKEN     # shared with the local agent. Generate with:
+        sync: false                #   python -c "import secrets;print(secrets.token_urlsafe(32))"
+      - key: PYRO_ACK_PIN          # required to acknowledge from the public page
+        sync: false
+      - key: PYRO_PUBLIC_TOKEN     # set to make the dashboard private (?k=...)
+        sync: false
+
+      # ---- watchdog: alerts YOU when the site itself goes quiet ----
+      - key: PUSHOVER_TOKEN
+        sync: false
+      - key: PUSHOVER_USER
+        sync: false
+      - key: NTFY_TOPIC
+        sync: false

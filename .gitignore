@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# Site configuration. Contains your camera IP, username and (via ${VAR}) the
+# shape of your credentials. pyrosense.config.example.json is the one to commit.
+pyrosense.config.json
+pyrosense.local.json
+*.env
+.env
+
+# Everything the running system produces: event log, snapshots, alert clips,
+# the cloud mirror's store, the spool, rendered scenario videos. All of it is
+# either regenerable or site-private.
+data/
+
+# ...except the benchmark result, which is small and worth having in the repo
+# so the numbers in README.md can be checked against something.
+!data/bench.json
+
+preview/

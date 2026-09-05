@@ -1,0 +1,44 @@
+{
+  "site": "Home Workshop",
+  "dashboard_url": "https://pyrosense-demo.onrender.com",
+
+  "cloud": {
+    "enabled": true,
+    "url": "${PYRO_CLOUD_URL}",
+    "token": "${PYRO_INGEST_TOKEN}",
+    "site": "Home Workshop",
+    "heartbeat_s": 3,
+    "frame_idle_s": 3,
+    "frame_active_s": 1,
+    "frame_width": 640
+  },
+
+  "alerts": {
+    "dry_run": true,
+    "file": "data/events/alerts.jsonl"
+  },
+
+  "urgent": {
+    "dry_run": true,
+    "pushover": { "token": "${PUSHOVER_TOKEN}", "user": "${PUSHOVER_USER}",
+                  "retry_s": 30, "expire_s": 900, "sound": "siren" },
+    "ntfy":     { "topic": "${NTFY_TOPIC}", "priority": 5 },
+    "twilio":   { "account_sid": "${TWILIO_ACCOUNT_SID}",
+                  "auth_token": "${TWILIO_AUTH_TOKEN}",
+                  "from_number": "${TWILIO_FROM_NUMBER}",
+                  "call_numbers": ["${ALERT_PHONE_PRIMARY}"] },
+    "ladder":   { "call_after_s": 90, "second_call_after_s": 300,
+                  "give_up_after_s": 1800 }
+  },
+
+  "vlm": { "enabled": false, "model": "claude-opus-5", "effort": "medium" },
+
+  "defaults": { "work_width": 480, "cooldown_s": 60 },
+
+  "cameras": [
+    { "name": "workshop-01", "location": "Bench area",
+      "source": { "kind": "scenario", "scenario": "pallet_fire", "fps": 12 } },
+    { "name": "workshop-02", "location": "Welding corner",
+      "source": { "kind": "scenario", "scenario": "welding", "fps": 12 } }
+  ]
+}

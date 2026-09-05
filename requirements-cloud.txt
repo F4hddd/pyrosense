@@ -1,0 +1,4 @@
+# The hosted mirror only. No OpenCV, no numpy, no ffmpeg - it never touches a
+# frame beyond passing JPEG bytes through, so the image stays small and boots fast.
+fastapi==0.141.1
+uvicorn[standard]==0.34.0

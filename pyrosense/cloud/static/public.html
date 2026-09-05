@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PyroSense - Live Site Status</title>
+<style>
+  :root{
+    --bg:#0b0d11; --panel:#13161c; --panel2:#181c24; --line:#242a35;
+    --tx:#e7eaf0; --mut:#8b93a3; --dim:#5b6373;
+    --flame:#ff5a1f; --smoke:#93a3b8; --ok:#34d399; --warn:#fbbf24; --bad:#f43f5e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:14px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;flex-wrap:wrap;
+    background:linear-gradient(180deg,#161a21,#11141a);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:30}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:650}
+  .glyph{width:20px;height:20px;border-radius:6px;
+    background:radial-gradient(circle at 50% 78%,#ffd166,#ff6b35 45%,#c1121f);
+    box-shadow:0 0 12px rgba(255,107,53,.5)}
+  .site{color:var(--mut);font-weight:400;font-size:13px}
+  .pills{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+  .pill{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+    background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--mut)}
+  .pill b{color:var(--tx);font-weight:600}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .dot.warn{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+  .dot.off{background:var(--bad);box-shadow:0 0 8px var(--bad)}
+
+  /* The health banner is the most important element on the page. */
+  .health{margin:14px 18px 0;padding:13px 16px;border-radius:11px;font-size:14px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .health .big{font-weight:700;font-size:15px;letter-spacing:.02em}
+  .health.live{background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.3);color:#a7e8cd}
+  .health.stale{background:rgba(251,191,36,.09);border:1px solid rgba(251,191,36,.38);color:#f0d69a}
+  .health.offline,.health.never_connected{
+    background:rgba(244,63,94,.11);border:1px solid rgba(244,63,94,.5);color:#ffc3cd;
+    animation:warn 2s ease-in-out infinite}
+  @keyframes warn{0%,100%{box-shadow:0 0 0 1px rgba(244,63,94,.28)}
+                  50%{box-shadow:0 0 22px rgba(244,63,94,.32)}}
+
+  main{display:grid;grid-template-columns:1fr 400px;gap:16px;padding:16px;
+    align-items:start;max-width:1700px;margin:0 auto}
+  @media(max-width:1080px){main{grid-template-columns:1fr}}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .cam{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .cam.alarm{border-color:var(--flame);box-shadow:0 0 0 1px var(--flame),0 0 26px rgba(255,90,31,.3);
+    animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 1px var(--flame),0 0 20px rgba(255,90,31,.22)}
+    50%{box-shadow:0 0 0 1px var(--flame),0 0 34px rgba(255,90,31,.46)}}
+  .cam .head{display:flex;align-items:center;gap:8px;padding:9px 12px;
+    border-bottom:1px solid var(--line);background:var(--panel2)}
+  .cam .nm{font-weight:600;font-size:13px}
+  .cam .loc{color:var(--dim);font-size:11px}
+  .cam .rt{margin-left:auto;font-size:11px;color:var(--mut)}
+  .shot{position:relative;background:#000;aspect-ratio:16/9}
+  .shot img{width:100%;height:100%;object-fit:cover;display:block}
+  .shot .stale{position:absolute;inset:0;background:rgba(8,10,14,.72);display:none;
+    align-items:center;justify-content:center;text-align:center;padding:16px;
+    font-size:12.5px;color:#ffc3cd;flex-direction:column;gap:6px}
+  .shot.isstale .stale{display:flex}
+  .badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:6px;
+    font-size:11px;font-weight:700;letter-spacing:.4px;background:rgba(0,0,0,.62);
+    border:1px solid var(--line);color:var(--mut);z-index:2}
+  .badge.fire{background:var(--flame);color:#160800;border-color:var(--flame)}
+  .badge.smoke{background:#8b98aa;color:#0d1117;border-color:#8b98aa}
+  .fage{position:absolute;bottom:8px;right:8px;font-size:10px;color:#cfd6e2;
+    background:rgba(0,0,0,.6);padding:2px 7px;border-radius:5px;z-index:2}
+  .meters{padding:10px 12px 12px;display:grid;gap:7px}
+  .m{display:grid;grid-template-columns:44px 1fr 40px;align-items:center;gap:8px;
+    font-size:11px;color:var(--mut)}
+  .bar{height:6px;background:#1e2229;border-radius:3px;overflow:hidden;position:relative}
+  .bar i{display:block;height:100%;width:0;border-radius:3px;transition:width .4s ease}
+  .bar.f i{background:linear-gradient(90deg,#7a2d0d,var(--flame))}
+  .bar.s i{background:linear-gradient(90deg,#3f4a58,#9fb0c4)}
+  .m .v{text-align:right;color:var(--tx);font-variant-numeric:tabular-nums}
+  .latchnote{font-size:10.5px;color:var(--warn);line-height:1.4;padding-top:2px}
+
+  aside{display:grid;gap:14px;position:sticky;top:62px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .panel h2{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.7px;
+    text-transform:uppercase;color:var(--mut);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:8px}
+  .panel h2 .n{margin-left:auto;background:var(--panel2);border:1px solid var(--line);
+    padding:1px 7px;border-radius:999px;font-size:11px;letter-spacing:0}
+  .feed{max-height:min(62vh,620px);overflow-y:auto}
+  .ev{padding:11px 14px;border-bottom:1px solid var(--line);display:grid;gap:7px}
+  .ev:last-child{border-bottom:0}
+  .ev.unack{background:rgba(255,90,31,.05)}
+  .ev .top{display:flex;align-items:center;gap:8px;font-size:12px}
+  .ev .k{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.4px}
+  .ev .k.flame{background:rgba(255,90,31,.16);color:var(--flame);border:1px solid rgba(255,90,31,.4)}
+  .ev .k.smoke{background:rgba(147,163,184,.14);color:#b6c2d2;border:1px solid #46505f}
+  .ev .cm{font-weight:600}
+  .ev .t{margin-left:auto;color:var(--dim);font-size:11px}
+  .ev img{width:100%;border-radius:7px;border:1px solid var(--line);display:block}
+  .ev .why{font-size:12px;color:var(--mut);line-height:1.45}
+  .ev .adj{font-size:12px;padding:8px 10px;border-radius:7px;line-height:1.45;
+    background:#101820;border-left:2px solid #2b3a4a;color:#c3cede}
+  .ackbtn{padding:7px 10px;font-size:12px;font-weight:600;border-radius:7px;cursor:pointer;
+    background:var(--flame);border:1px solid var(--flame);color:#170700;width:100%}
+  .ackbtn:hover{filter:brightness(1.1)}
+  .ackbtn:disabled{background:var(--panel2);border-color:var(--line);color:var(--dim);
+    cursor:default;filter:none}
+  .acked{font-size:11.5px;color:var(--ok)}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:5px 12px;padding:12px 14px;font-size:12px}
+  .kv span{color:var(--mut)}
+  .kv b{font-weight:600;font-variant-numeric:tabular-nums}
+  .empty{padding:26px 14px;text-align:center;color:var(--dim);font-size:12.5px}
+  footer{padding:10px 18px 30px;color:var(--dim);font-size:11.5px;text-align:center}
+
+  .ev video,.mev video{width:100%;border-radius:7px;border:1px solid var(--line);
+    display:block;background:#000}
+  .clipbar{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--dim)}
+  .clipbar a{color:var(--mut);text-decoration:none;border-bottom:1px dotted var(--line)}
+  .clipbar a:hover{color:var(--tx)}
+  .cam{cursor:pointer}
+  .cam:hover{border-color:#3a4454}
+  .cam .expand{position:absolute;top:8px;right:8px;font-size:10px;color:#cfd6e2;
+    background:rgba(0,0,0,.6);padding:2px 7px;border-radius:5px;z-index:2;opacity:0;
+    transition:opacity .15s}
+  .cam:hover .expand{opacity:1}
+
+  /* ---------- camera detail ---------- */
+  .backdrop{position:fixed;inset:0;background:rgba(6,8,11,.78);z-index:60;
+    display:none;align-items:flex-start;justify-content:center;padding:26px 16px;
+    overflow-y:auto;backdrop-filter:blur(2px)}
+  .backdrop.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    width:min(1080px,100%);overflow:hidden;box-shadow:0 30px 80px -30px #000}
+  .modal .mhead{display:flex;align-items:center;gap:10px;padding:13px 16px;
+    border-bottom:1px solid var(--line);background:var(--panel2);position:sticky;top:0}
+  .modal .mhead .mt{font-weight:650;font-size:15px}
+  .modal .mhead .ml{color:var(--dim);font-size:12px}
+  .modal .x{margin-left:auto;background:transparent;border:1px solid var(--line);
+    color:var(--mut);border-radius:7px;width:30px;height:30px;cursor:pointer;font-size:16px}
+  .modal .x:hover{color:var(--tx);border-color:#3a4454}
+  .mbody{display:grid;grid-template-columns:1.35fr 1fr;gap:0}
+  @media(max-width:860px){.mbody{grid-template-columns:1fr}}
+  .mleft{padding:16px;border-right:1px solid var(--line)}
+  @media(max-width:860px){.mleft{border-right:0;border-bottom:1px solid var(--line)}}
+  .mshot{position:relative;background:#000;border-radius:10px;overflow:hidden;
+    aspect-ratio:16/9}
+  .mshot img{width:100%;height:100%;object-fit:contain;display:block}
+  .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:14px}
+  .mcell{background:var(--panel2);padding:9px 11px}
+  .mcell .l{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .mcell .v2{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+  .mchart{margin-top:14px;border:1px solid var(--line);border-radius:9px;
+    background:var(--panel2);padding:10px 12px}
+  .mchart .t2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--dim);margin-bottom:6px;display:flex;gap:12px}
+  .mchart .t2 i{width:8px;height:2px;display:inline-block;vertical-align:middle;margin-right:4px}
+  .mright{padding:16px;max-height:70vh;overflow-y:auto}
+  .mright h3{margin:0 0 10px;font-size:11px;letter-spacing:.8px;text-transform:uppercase;
+    color:var(--mut)}
+  .mev{border:1px solid var(--line);border-radius:9px;padding:11px;margin-bottom:11px;
+    display:grid;gap:8px;background:var(--panel2)}
+  .mev.unack{border-color:rgba(255,90,31,.45)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><div class="glyph"></div>PyroSense
+    <span class="site" id="siteName">-</span></div>
+  <div class="pills">
+    <div class="pill"><span class="dot" id="dFeed"></span><b id="pFeed">connecting</b></div>
+    <div class="pill">cameras <b id="pCams">-</b></div>
+    <div class="pill">events <b id="pEvents">-</b></div>
+    <div class="pill"><span class="dot" id="dAlert"></span>alerting <b id="pAlert">-</b></div>
+  </div>
+</header>
+
+<div class="health never_connected" id="health">
+  <span class="big" id="healthBig">Waiting for the site to report...</span>
+  <span id="healthSub"></span>
+</div>
+
+<main>
+  <section><div class="grid" id="grid">
+    <div class="empty">No cameras reported yet.</div>
+  </div></section>
+
+  <aside>
+    <div class="panel">
+      <h2>Alerts <span class="n" id="evCount">0</span></h2>
+      <div class="feed" id="feed"><div class="empty">No alerts recorded.</div></div>
+    </div>
+    <div class="panel">
+      <h2>Site</h2>
+      <div class="kv" id="siteInfo"></div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  This page is a mirror. Detection and alerting run on-site and keep working even
+  when this page cannot be reached.
+</footer>
+
+<div class="backdrop" id="backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="mhead">
+      <span class="dot" id="mDot"></span>
+      <span class="mt" id="mTitle">camera</span>
+      <span class="ml" id="mLoc"></span>
+      <button class="x" id="mClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="mbody">
+      <div class="mleft">
+        <div class="mshot"><img id="mImg" alt=""></div>
+        <div class="mgrid" id="mGrid"></div>
+        <div class="mchart">
+          <div class="t2">
+            <span><i style="background:#ff5a1f"></i>flame</span>
+            <span><i style="background:#8fa0b4"></i>smoke</span>
+            <span style="margin-left:auto" id="mSpan">last 3 min</span>
+          </div>
+          <svg viewBox="0 0 600 90" preserveAspectRatio="none"
+               style="width:100%;height:90px;display:block">
+            <line x1="0" y1="25.2" x2="600" y2="25.2" stroke="#39424f"
+                  stroke-width="1" stroke-dasharray="4 5"/>
+            <polyline id="mPf" fill="none" stroke="#ff5a1f" stroke-width="1.6" points=""/>
+            <polyline id="mPs" fill="none" stroke="#8fa0b4" stroke-width="1.4" points=""/>
+          </svg>
+        </div>
+      </div>
+      <div class="mright">
+        <h3>Recordings for this camera</h3>
+        <div id="mEvents"><div class="empty">No recordings yet.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const K = new URLSearchParams(location.search).get("k");
+const q = p => p + (K ? (p.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(K) : "");
+const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
+const ago = s => s == null ? "-" : s < 60 ? Math.round(s)+"s" :
+                 s < 3600 ? Math.round(s/60)+"m" : (s/3600).toFixed(1)+"h";
+
+let cams = new Map(), lastStatus = null, lastEvents = [], ackPinNeeded = false;
+
+function healthBanner(st){
+  const el = $("#health"), h = st.health;
+  el.className = "health " + h;
+  const age = st.last_heartbeat_age_s;
+  if(h === "live"){
+    $("#healthBig").textContent = "Site reporting normally";
+    $("#healthSub").textContent = `last heartbeat ${ago(age)} ago`;
+  } else if(h === "stale"){
+    $("#healthBig").textContent = "Site is slow to report";
+    $("#healthSub").textContent =
+      `last heartbeat ${ago(age)} ago - this page may be behind. Detection is probably still running on-site.`;
+  } else if(h === "offline"){
+    $("#healthBig").textContent = "SITE OFFLINE - status below is NOT current";
+    $("#healthSub").textContent =
+      `Nothing heard for ${ago(age)}. Fire detection may not be running. Check power, the machine and the internet link.`;
+  } else {
+    $("#healthBig").textContent = "Waiting for the site to report...";
+    $("#healthSub").textContent = "No heartbeat has ever been received by this dashboard.";
+  }
+}
+
+function camTile(name){
+  const el = document.createElement("div");
+  el.className = "cam"; el.dataset.name = name;
+  el.innerHTML = `
+    <div class="head"><span class="dot"></span>
+      <span class="nm"></span><span class="loc"></span><span class="rt"></span></div>
+    <div class="shot">
+      <div class="badge">watching</div>
+      <div class="expand">click to open</div>
+      <img alt="" loading="lazy">
+      <div class="fage"></div>
+      <div class="stale"><b>Frame is stale</b><span>the site has stopped sending</span></div>
+    </div>
+    <div class="meters">
+      <div class="m"><label>flame</label><div class="bar f"><i></i></div><div class="v">0%</div></div>
+      <div class="m"><label>smoke</label><div class="bar s"><i></i></div><div class="v">0%</div></div>
+    </div>`;
+  el.addEventListener("click", () => openCamera(name));
+  el.tabIndex = 0;
+  el.addEventListener("keydown", e => {
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); openCamera(name); }
+  });
+  return el;
+}
+
+/* ---------------- camera detail ---------------- */
+let openCam = null, modalTimer = null;
+
+function openCamera(name){
+  openCam = name;
+  $("#backdrop").classList.add("open");
+  document.body.style.overflow = "hidden";
+  renderModal();
+  clearInterval(modalTimer);
+  modalTimer = setInterval(renderModal, 2000);
+}
+function closeCamera(){
+  openCam = null;
+  $("#backdrop").classList.remove("open");
+  document.body.style.overflow = "";
+  clearInterval(modalTimer); modalTimer = null;
+  $("#mImg").src = "";                       // stop fetching frames we cannot see
+  $("#mEvents").innerHTML = "";              // and stop buffering video
+}
+$("#mClose").onclick = closeCamera;
+$("#backdrop").addEventListener("click", e => {
+  if(e.target === $("#backdrop")) closeCamera();
+});
+document.addEventListener("keydown", e => { if(e.key === "Escape" && openCam) closeCamera(); });
+
+function poly600(hist, idx){
+  if(!hist || !hist.length) return "";
+  const n = hist.length, step = 600/Math.max(1,n-1);
+  return hist.map((h,i)=> `${(i*step).toFixed(1)},${(90-Math.min(1,h[idx])*90).toFixed(1)}`).join(" ");
+}
+
+function renderModal(){
+  if(!openCam || !lastStatus) return;
+  const st = lastStatus;
+  const c = (st.telemetry?.cameras || []).find(x => x.name === openCam);
+  if(!c) return;
+  const offline = st.health === "offline" || st.health === "never_connected";
+  const f = (st.frames || {})[openCam];
+
+  $("#mTitle").textContent = c.name;
+  $("#mLoc").textContent = c.location || "";
+  $("#mDot").className = "dot " + (offline ? "off" : (c.source?.connected ? "on" : "warn"));
+  if(f) $("#mImg").src = q(`/api/public/frame/${encodeURIComponent(openCam)}?t=${Math.floor(Date.now()/1500)}`);
+
+  const alarmTxt = c.alarm?.flame ? "FLAME" : c.alarm?.smoke ? "SMOKE" : "none";
+  $("#mGrid").innerHTML = `
+    <div class="mcell"><div class="l">Flame</div><div class="v2" style="color:var(--flame)">
+      ${offline ? "-" : Math.round((c.score?.flame||0)*100)+"%"}</div></div>
+    <div class="mcell"><div class="l">Smoke</div><div class="v2">
+      ${offline ? "-" : Math.round((c.score?.smoke||0)*100)+"%"}</div></div>
+    <div class="mcell"><div class="l">Alarm</div><div class="v2">${offline ? "unknown" : alarmTxt}</div></div>
+    <div class="mcell"><div class="l">Stream</div><div class="v2">${c.source?.fps ?? "-"} fps</div></div>
+    <div class="mcell"><div class="l">Detector cost</div><div class="v2">${c.proc_ms ?? "-"} ms/frame</div></div>
+    <div class="mcell"><div class="l">Frames gated</div><div class="v2">${Math.round((c.gate_rate||0)*100)}%</div></div>
+    <div class="mcell"><div class="l">Frame age</div><div class="v2">${f ? ago(f.age_s) : "no frame"}</div></div>
+    <div class="mcell"><div class="l">Zones</div><div class="v2">${(c.zones&&c.zones.length)?c.zones.join(", "):"whole frame"}</div></div>
+    ${c.source?.error ? `<div class="mcell" style="grid-column:1/-1"><div class="l">Stream error</div>
+      <div class="v2" style="color:var(--bad);font-size:12px;font-weight:400">${esc(c.source.error)}</div></div>` : ""}`;
+
+  $("#mPf").setAttribute("points", poly600(c.history, 1));
+  $("#mPs").setAttribute("points", poly600(c.history, 2));
+  if(c.history && c.history.length > 1){
+    const span = c.history[c.history.length-1][0] - c.history[0][0];
+    $("#mSpan").textContent = "last " + ago(span);
+  }
+
+  // Recordings for this camera. Rebuilt only when the set changes, so an
+  // in-progress <video> is never yanked out from under someone watching it.
+  const mine = (lastEvents || []).filter(e => e.camera === openCam);
+  const sig = mine.map(e => e.id + (e.has_clip?"c":"") + (e.acknowledged?"a":"")).join(",");
+  if(sig !== $("#mEvents").dataset.sig){
+    $("#mEvents").dataset.sig = sig;
+    $("#mEvents").innerHTML = "";
+    if(!mine.length){
+      $("#mEvents").innerHTML = '<div class="empty">No recordings yet.</div>';
+    } else {
+      mine.forEach(e => $("#mEvents").appendChild(mevCard(e, lastStatus.acks)));
+    }
+  }
+}
+
+function mevCard(e, acks){
+  const d = document.createElement("div");
+  const acked = e.acknowledged || acks?.[e.id];
+  d.className = "mev" + (acked ? "" : " unack");
+  d.innerHTML = `
+    <div class="top">
+      <span class="k ${e.kind}">${(e.kind||"").toUpperCase()}</span>
+      <span style="color:var(--mut)">${Math.round((e.score||0)*100)}%</span>
+      <span class="t">${new Date((e.started||0)*1000).toLocaleString()}</span>
+    </div>
+    ${e.has_clip
+      ? `<video controls preload="none" playsinline
+              poster="${e.has_snapshot ? q('/api/public/frame/event:'+encodeURIComponent(e.id)) : ''}"
+              src="${q('/api/public/clip/'+encodeURIComponent(e.id))}"></video>
+         <div class="clipbar"><span>${e.clip_seconds ? e.clip_seconds+"s" : ""} replay -
+           before and after detection</span>
+           <a href="${q('/api/public/clip/'+encodeURIComponent(e.id))}" download>download</a></div>`
+      : (e.has_snapshot
+          ? `<img src="${q('/api/public/frame/event:'+encodeURIComponent(e.id))}" alt="">
+             <div class="clipbar">still only - no clip reached the mirror</div>`
+          : "")}
+    <div class="why">${esc(e.reason||"")}</div>
+    ${e.adjudication ? `<div class="adj">${esc(e.adjudication)}</div>` : ""}
+    ${acked ? `<div class="acked">Acknowledged</div>`
+            : `<button class="ackbtn">Acknowledge - stop alerts</button>`}`;
+  const btn = d.querySelector(".ackbtn");
+  if(btn) btn.onclick = () => doAck(e.id, btn, d);
+  return d;
+}
+
+function renderCams(st){
+  const tel = st.telemetry || {}, list = tel.cameras || [];
+  const grid = $("#grid");
+  if(list.length && grid.querySelector(".empty")) grid.innerHTML = "";
+  const offline = st.health === "offline" || st.health === "never_connected";
+
+  for(const c of list){
+    let el = cams.get(c.name);
+    if(!el){ el = camTile(c.name); cams.set(c.name, el); grid.appendChild(el); }
+    const alarm = c.alarm && (c.alarm.flame || c.alarm.smoke);
+    const hot = Math.max(c.score?.flame||0, c.score?.smoke||0);
+    el.className = "cam" + (alarm && !offline ? " alarm" : "");
+    el.querySelector(".nm").textContent = c.name;
+    el.querySelector(".loc").textContent = c.location ? "· "+c.location : "";
+    const conn = c.source && c.source.connected;
+    el.querySelector(".head .dot").className = "dot " + (offline ? "off" : conn ? "on" : "warn");
+    el.querySelector(".rt").textContent = offline ? "unknown" : conn ? "live" : "camera offline";
+
+    // An alarm latches: once raised it stays up until a human acknowledges it,
+    // even if the signal dips (a flame flaring down, a camera auto-exposing, the
+    // view filling with smoke). That is deliberate - an alarm must never clear
+    // itself - but "FLAME" beside "0%" reads as a broken gauge, so say so.
+    const b = el.querySelector(".badge");
+    const latched = (c.alarm?.flame || c.alarm?.smoke) && hot < 0.4;
+    if(offline){ b.className="badge"; b.textContent="unknown"; }
+    else if(c.alarm?.flame){ b.className="badge fire";
+      b.textContent = latched ? "FLAME - held" : "FLAME"; }
+    else if(c.alarm?.smoke){ b.className="badge smoke";
+      b.textContent = latched ? "SMOKE - held" : "SMOKE"; }
+    else if(hot>0.4){ b.className="badge"; b.textContent="assessing"; }
+    else { b.className="badge"; b.textContent="watching"; }
+    let note = el.querySelector(".latchnote");
+    if(latched && !offline){
+      if(!note){
+        note = document.createElement("div");
+        note.className = "latchnote";
+        el.querySelector(".meters").appendChild(note);
+      }
+      note.textContent = "Alarm held open - live signal is currently below "
+                       + "threshold. Acknowledge to clear.";
+    } else if(note){ note.remove(); }
+
+    const f = (st.frames||{})[c.name];
+    const img = el.querySelector("img"), shot = el.querySelector(".shot");
+    if(f){
+      const bust = Math.floor(Date.now()/2000);
+      img.src = q(`/api/public/frame/${encodeURIComponent(c.name)}?t=${bust}`);
+      el.querySelector(".fage").textContent = "frame " + ago(f.age_s) + " old";
+      shot.classList.toggle("isstale", offline || f.age_s > 90);
+    } else {
+      el.querySelector(".fage").textContent = "no frame yet";
+      shot.classList.add("isstale");
+    }
+
+    const bars = el.querySelectorAll(".bar i"), vals = el.querySelectorAll(".v");
+    const fl = offline ? 0 : (c.score?.flame||0), sm = offline ? 0 : (c.score?.smoke||0);
+    bars[0].style.width = (fl*100).toFixed(0)+"%";
+    bars[1].style.width = (sm*100).toFixed(0)+"%";
+    vals[0].textContent = offline ? "-" : Math.round(fl*100)+"%";
+    vals[1].textContent = offline ? "-" : Math.round(sm*100)+"%";
+  }
+}
+
+function renderStatus(st){
+  lastStatus = st;
+  ackPinNeeded = !!st.ack_required_pin;
+  $("#siteName").textContent = "- " + (st.site || "");
+  healthBanner(st);
+  const tel = st.telemetry || {}, list = tel.cameras || [];
+  const conn = list.filter(c => c.source && c.source.connected).length;
+  $("#pCams").textContent = `${conn}/${list.length}`;
+  $("#pEvents").textContent = tel.events_total ?? "-";
+
+  const al = tel.alerting || {};
+  const chans = Object.entries(al.channels || {})
+    .filter(([k,v]) => v === true && k !== "dry_run").map(([k]) => k);
+  $("#pAlert").textContent = al.channels
+    ? (al.channels.dry_run ? "dry-run" : (chans.join(", ") || "none")) : "-";
+  $("#dAlert").className = "dot " + (chans.length && !al.channels?.dry_run ? "on" : "warn");
+
+  const s = st.health;
+  $("#dFeed").className = "dot " + (s === "live" ? "on" : s === "stale" ? "warn" : "off");
+  $("#pFeed").textContent = s === "live" ? "live" : s;
+
+  $("#siteInfo").innerHTML = `
+    <span>Heartbeat age</span><b>${ago(st.last_heartbeat_age_s)}</b>
+    <span>Goes stale after</span><b>${st.stale_after_s}s</b>
+    <span>Declared offline after</span><b>${st.offline_after_s}s</b>
+    <span>Site uptime</span><b>${ago(tel.uptime_s)}</b>
+    <span>Adjudication</span><b>${tel.adjudicator?.enabled ? (tel.adjudicator.model||"on") : "off"}</b>
+    <span>Alert mode</span><b>${tel.dry_run ? "dry-run" : "live"}</b>`;
+  renderCams(st);
+}
+
+async function doAck(id, btn, card){
+  let pin = "";
+  if(ackPinNeeded){ pin = prompt("Enter acknowledgement PIN:") || ""; if(!pin) return; }
+  btn.disabled = true; btn.textContent = "Acknowledging...";
+  try{
+    const r = await fetch(q(`/api/public/ack/${encodeURIComponent(id)}`),
+      {method:"POST", headers:{"Content-Type":"application/json"},
+       body: JSON.stringify({pin})});
+    if(!r.ok){ throw new Error((await r.json()).detail || r.statusText); }
+    btn.replaceWith(Object.assign(document.createElement("div"),
+      {className:"acked",
+       textContent:"Acknowledged - the site will stop alerting within a few seconds"}));
+    card.classList.remove("unack");
+  }catch(err){
+    btn.disabled = false; btn.textContent = "Acknowledge - stop alerts";
+    alert("Could not acknowledge: " + err.message);
+  }
+}
+
+function evCard(e, acks){
+  const d = document.createElement("div");
+  const acked = e.acknowledged || acks?.[e.id];
+  d.className = "ev" + (acked ? "" : " unack");
+  d.dataset.id = e.id;
+  d.innerHTML = `
+    <div class="top">
+      <span class="k ${e.kind}">${(e.kind||"").toUpperCase()}</span>
+      <span class="cm">${esc(e.camera)}</span>
+      <span style="color:var(--mut)">${Math.round((e.score||0)*100)}%</span>
+      <span class="t">${new Date((e.started||0)*1000).toLocaleTimeString()}</span>
+    </div>
+    ${e.has_clip
+      ? `<video controls preload="none" playsinline
+              poster="${e.has_snapshot ? q('/api/public/frame/event:'+encodeURIComponent(e.id)) : ''}"
+              src="${q('/api/public/clip/'+encodeURIComponent(e.id))}"></video>
+         <div class="clipbar"><span>${e.clip_seconds ? e.clip_seconds+"s" : ""} replay</span>
+           <a href="#" data-cam="${esc(e.camera)}" class="openc">open camera</a></div>`
+      : (e.has_snapshot
+          ? `<img src="${q('/api/public/frame/event:'+encodeURIComponent(e.id))}" alt="">` : "")}
+    <div class="why">${esc(e.reason||"")}</div>
+    ${e.adjudication ? `<div class="adj">${esc(e.adjudication)}</div>` : ""}
+    ${acked ? `<div class="acked">Acknowledged${acks?.[e.id] ? " by "+esc(acks[e.id]) : ""}</div>`
+            : `<button class="ackbtn">Acknowledge - stop alerts</button>`}`;
+  const btn = d.querySelector(".ackbtn");
+  if(btn) btn.onclick = () => doAck(e.id, btn, d);
+  const oc = d.querySelector(".openc");
+  if(oc) oc.onclick = ev => { ev.preventDefault(); openCamera(e.camera); };
+  return d;
+}
+
+function renderEvents(list, acks){
+  const feed = $("#feed");
+  // Only rebuild when something actually changed. The feed now contains <video>
+  // elements, and re-rendering every 5 seconds would restart any clip a person
+  // is in the middle of watching.
+  const sig = list.map(e => e.id + (e.has_clip?"c":"") +
+                            (e.acknowledged||acks?.[e.id] ? "a":"")).join(",");
+  if(sig === feed.dataset.sig) return;
+  feed.dataset.sig = sig;
+  feed.innerHTML = "";
+  if(!list.length){ feed.innerHTML = '<div class="empty">No alerts recorded.</div>'; }
+  else list.forEach(e => feed.appendChild(evCard(e, acks)));
+  $("#evCount").textContent = list.length;
+}
+
+async function refresh(){
+  try{
+    const [st, evs] = await Promise.all([
+      fetch(q("/api/public/status")).then(r=>r.json()),
+      fetch(q("/api/public/events?limit=40")).then(r=>r.json())
+    ]);
+    lastEvents = evs;
+    renderStatus(st);
+    renderEvents(evs, st.acks);
+    if(openCam) renderModal();
+  }catch(e){
+    $("#dFeed").className = "dot off";
+    $("#pFeed").textContent = "dashboard unreachable";
+  }
+}
+
+// Server-sent events push changes instantly; the poll is the safety net that
+// also keeps the "how old is this?" clock honest when nothing is happening.
+function connectSSE(){
+  try{
+    const src = new EventSource(q("/api/public/sse"));
+    src.onmessage = () => refresh();
+    src.onerror = () => { src.close(); setTimeout(connectSSE, 5000); };
+  }catch(e){ /* polling still covers us */ }
+}
+
+refresh();
+connectSSE();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
