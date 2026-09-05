@@ -115,8 +115,25 @@ local either way.
 The repo already contains `render.yaml`, so Render configures itself.
 
 1. **render.com** → sign up with GitHub.
-2. **New → Blueprint** → select your repo → **Apply**. It reads `render.yaml`
-   and creates the web service plus a 1 GB disk for event history and clips.
+2. Either path works:
+
+   **Blueprint** (reads `render.yaml`): New → Blueprint → select repo → Apply.
+
+   **Manual** (New → Web Service) ignores `render.yaml`, so fill in:
+
+   | Field | Value |
+   |---|---|
+   | Language | `Python 3` |
+   | Branch | `main` |
+   | Root Directory | *(leave blank)* |
+   | Build Command | `pip install -r requirements-cloud.txt` |
+   | Start Command | `uvicorn pyrosense.cloud.server:app --host 0.0.0.0 --port $PORT` |
+
+   On the **Free** plan there is no persistent disk, so leave `PYRO_DATA_DIR`
+   unset: the mirror keeps ~300 events and 12 clips in memory and starts empty
+   after a restart. The site machine holds the authoritative log either way.
+   One free service running continuously uses about 730 of the 750 free
+   instance-hours a month, so it just fits - a second free service will not.
 3. Generate an ingest token:
    ```bash
    python -c "import secrets; print(secrets.token_urlsafe(32))"
