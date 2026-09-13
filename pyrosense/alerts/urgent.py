@@ -162,11 +162,19 @@ class Ntfy:
     server. For anything beyond a demo, self-host or use ntfy's access control."""
 
     def __init__(self, topic: str, server: str = "https://ntfy.sh",
-                 token: str = "", priority: int = 5):
+                 token: str = "", priority: int = 5, repeat_s: float = 60.0,
+                 attach_image: bool = True):
         self.topic = topic
         self.server = server.rstrip("/")
         self.token = token
         self.priority = priority
+        # ntfy has no emergency-retry of its own like Pushover. Re-sending until
+        # acknowledged is what turns one missable buzz into something that wakes
+        # a person. 0 disables.
+        self.repeat_s = repeat_s
+        # On the public server anyone who knows the topic can read it, image
+        # included. Turn this off unless the topic name is unguessable.
+        self.attach_image = attach_image
 
     @property
     def configured(self) -> bool:
@@ -175,6 +183,7 @@ class Ntfy:
     def send(self, title: str, message: str, click: str = "",
              tags: str = "fire,rotating_light", image: bytes | None = None) -> dict:
         url = f"{self.server}/{self.topic}"
+        image = image if self.attach_image else None
         body = image if image else message.encode("utf-8")
         req = urllib.request.Request(url, data=body, method="POST")
         req.add_header("Title", title[:200].encode("ascii", "ignore").decode())
@@ -182,6 +191,7 @@ class Ntfy:
         req.add_header("Tags", tags)
         if click:
             req.add_header("Click", click)
+            req.add_header("Actions", f"view, Open dashboard to acknowledge, {click}")
         if image:
             req.add_header("Filename", "alert.jpg")
             req.add_header("Message", message[:400].encode("ascii", "ignore").decode())
@@ -266,6 +276,8 @@ class Incident:
     acked_by: str = ""
     acked_at: float = 0.0
     step: int = 0
+    last_push: float = 0.0
+    pushes: int = 0
     receipts: list = field(default_factory=list)
     log: list = field(default_factory=list)
 
@@ -388,6 +400,7 @@ class EscalationManager:
             try:
                 self.ntfy.send(self._title(inc), self._body(inc), click=inc.url,
                                image=image)
+                inc.last_push, inc.pushes = time.time(), 1
                 inc.note("ntfy priority-5 sent")
             except Exception as e:
                 inc.note(f"ntfy FAILED: {type(e).__name__}: {e}")
@@ -430,6 +443,18 @@ class EscalationManager:
                     inc.acked_by = "expired"
                 continue
 
+            if (not self.dry_run and self.ntfy and self.ntfy.configured
+                    and self.ntfy.repeat_s and inc.last_push
+                    and now - inc.last_push >= self.ntfy.repeat_s):
+                inc.last_push = now
+                inc.pushes += 1
+                try:
+                    self.ntfy.send(f"STILL UNACKNOWLEDGED ({inc.pushes}) - {self._title(inc)}",
+                                   self._body(inc), click=inc.url)
+                    inc.note(f"ntfy repeat {inc.pushes} sent")
+                except Exception as e:
+                    inc.note(f"ntfy repeat FAILED: {type(e).__name__}: {e}")
+
             if inc.step == 0 and age >= self.call_after_s:
                 inc.step = 1
                 self._place_call(inc, first=True)
@@ -470,7 +495,8 @@ def build_escalation(cfg: dict) -> EscalationManager:
                         int(po.get("retry_s", 30)), int(po.get("expire_s", 900)),
                         po.get("sound", "siren")) if po.get("token") else None
     ntfy = Ntfy(nt.get("topic", ""), nt.get("server", "https://ntfy.sh"),
-                nt.get("token", ""), int(nt.get("priority", 5))) \
+                nt.get("token", ""), int(nt.get("priority", 5)),
+                float(nt.get("repeat_s", 60)), bool(nt.get("attach_image", True))) \
         if nt.get("topic") else None
     voice = TwilioVoice(tw.get("account_sid", ""), tw.get("auth_token", ""),
                         tw.get("from_number", ""), tw.get("call_numbers", [])) \
