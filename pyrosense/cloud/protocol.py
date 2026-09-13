@@ -145,3 +145,26 @@ def verify(secret: str, body: bytes, ts: str, signature: str,
     if not hmac.compare_digest(sign(secret, body, ts), signature):
         return False, "signature mismatch"
     return True, ""
+
+
+def clip_filename(event: dict | None, fallback_id: str, ext: str = ".mp4") -> str:
+    """A download name a person can file: pyrosense_imou-01_flame_20260913-142201.mp4.
+
+    Both dashboards serve clips under an opaque event id, which is the right
+    storage key and a useless filename in someone's Downloads folder. Only
+    [A-Za-z0-9-_] survive, so the result is safe inside a Content-Disposition
+    header without quoting rules."""
+    def clean(v) -> str:
+        return "".join(c if c.isalnum() or c in "-_" else "-" for c in str(v or ""))[:40]
+    parts = ["pyrosense"]
+    if event:
+        parts += [clean(event.get("camera")), clean(event.get("kind"))]
+        try:
+            parts.append(time.strftime("%Y%m%d-%H%M%S",
+                                       time.localtime(float(event.get("started")))))
+        except (TypeError, ValueError):
+            parts.append(clean(fallback_id))
+    else:
+        parts.append(clean(fallback_id))
+    ext = ext if ext in (".mp4", ".avi") else ".mp4"
+    return "_".join(p for p in parts if p) + ext

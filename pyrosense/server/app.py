@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                StreamingResponse)
 
+from ..cloud.protocol import clip_filename
 from ..core.engine import Engine
 
 HERE = os.path.dirname(__file__)
@@ -98,12 +99,19 @@ def create_app(engine: Engine) -> FastAPI:
         raise HTTPException(404, "no such event")
 
     @app.get("/api/media/{name}")
-    def media(name: str):
+    def media(name: str, download: int = 0):
         if "/" in name or "\\" in name or ".." in name:
             raise HTTPException(400, "bad name")
         p = os.path.join(engine.store.root, "media", name)
         if not os.path.exists(p):
             raise HTTPException(404, "not found")
+        if download:
+            ev = next((e for e in list(engine.store.events)
+                       if e.clip and os.path.basename(e.clip) == name), None)
+            stem, ext = os.path.splitext(name)
+            fname = (clip_filename(ev.to_json(), stem, ext) if ext in (".mp4", ".avi")
+                     else name)
+            return FileResponse(p, filename=fname)
         return FileResponse(p)
 
     @app.get("/api/camera/{camera}")

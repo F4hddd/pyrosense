@@ -31,7 +31,9 @@
                   "give_up_after_s": 1800 }
   },
 
-  "vlm": { "enabled": false, "model": "claude-opus-5", "effort": "medium" },
+  "vlm": { "enabled": false, "model": "claude-haiku-4-5-20251001", "max_tokens": 400,
+           "context_width": 512, "crop_width": 384,
+           "max_calls_per_hour": 6, "max_calls_per_day": 30 },
 
   "defaults": { "work_width": 480, "cooldown_s": 60 },
 

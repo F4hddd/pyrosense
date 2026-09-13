@@ -143,10 +143,20 @@ class Adjudicator:
 
     def __init__(self, model: str = "claude-opus-5", api_key: str | None = None,
                  effort: str = "medium", max_calls_per_hour: int = 60,
-                 fail_open: bool = True, timeout_s: float = 25.0):
+                 fail_open: bool = True, timeout_s: float = 25.0,
+                 max_calls_per_day: int = 0, max_tokens: int = 2000,
+                 context_width: int = 900, crop_width: int = 640):
         self.model = model
         self.effort = effort
         self.max_calls_per_hour = max_calls_per_hour
+        # 0 = no daily cap. The hourly cap stops a flapping burst; the daily cap
+        # is the number to set when the concern is the monthly bill.
+        self.max_calls_per_day = max_calls_per_day
+        self.max_tokens = max_tokens
+        # Image tokens scale with pixel area, so these two widths are the main
+        # cost lever: 512 + 384 is roughly a third of the tokens of 900 + 640.
+        self.context_width = context_width
+        self.crop_width = crop_width
         self.fail_open = fail_open
         self.timeout_s = timeout_s
         self._key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -155,6 +165,11 @@ class Adjudicator:
         self._calls: list[float] = []
 
     # ------------------------------------------------------------------ setup
+    @property
+    def _frontier(self) -> bool:
+        """Effort control and fallback routing exist on the large models only."""
+        return not self.model.startswith("claude-haiku")
+
     @property
     def available(self) -> bool:
         """The SDK resolves credentials from more places than the env var (an
@@ -180,8 +195,10 @@ class Adjudicator:
         stops it from turning into an unbounded API bill overnight."""
         now = time.time()
         with self._lock:
-            self._calls = [t for t in self._calls if now - t < 3600]
-            if len(self._calls) >= self.max_calls_per_hour:
+            self._calls = [t for t in self._calls if now - t < 86400]
+            if sum(1 for t in self._calls if now - t < 3600) >= self.max_calls_per_hour:
+                return False
+            if self.max_calls_per_day and len(self._calls) >= self.max_calls_per_day:
                 return False
             self._calls.append(now)
             return True
@@ -195,7 +212,8 @@ class Adjudicator:
             a.error = "anthropic SDK not installed"
             return a
         if not self._budget_ok():
-            a.error = f"rate limit: {self.max_calls_per_hour} adjudications/hour reached"
+            a.error = (f"budget reached: {self.max_calls_per_hour}/hour"
+                       + (f", {self.max_calls_per_day}/day" if self.max_calls_per_day else ""))
             return a
 
         t0 = time.perf_counter()
@@ -215,35 +233,40 @@ class Adjudicator:
                 f"nuisance? Answer with the required JSON only."
             )
 
-            resp = client.beta.messages.create(
-                model=self.model,
-                max_tokens=2000,
-                system=SYSTEM,
-                # Server-side fallback: if a safety classifier declines this
-                # request, the platform routes it to another model rather than
-                # handing us a refusal. A fire alert must not be lost to one.
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-                output_config={"effort": self.effort,
-                               "format": {"type": "json_schema", "schema": SCHEMA}},
-                # The system prompt above is byte-stable across every call, so it
-                # is worth a cache breakpoint. Whether it actually caches depends
-                # on the model's minimum cacheable prefix; on a low-volume alert
-                # path this is a nice-to-have, not the main cost lever.
-                cache_control={"type": "ephemeral"},
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "source": {
-                            "type": "base64", "media_type": "image/jpeg",
-                            "data": _jpeg_b64(context_bgr)}},
-                        {"type": "image", "source": {
-                            "type": "base64", "media_type": "image/jpeg",
-                            "data": _jpeg_b64(crop_bgr, quality=88, max_w=640)}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }],
-            )
+            content = [
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": "image/jpeg",
+                    "data": _jpeg_b64(context_bgr, quality=75, max_w=self.context_width)}},
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": "image/jpeg",
+                    "data": _jpeg_b64(crop_bgr, quality=85, max_w=self.crop_width)}},
+                {"type": "text", "text": prompt},
+            ]
+            fmt = {"type": "json_schema", "schema": SCHEMA}
+            if self._frontier:
+                resp = client.beta.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    system=SYSTEM,
+                    # Server-side fallback: if a safety classifier declines this
+                    # request, the platform routes it to another model rather than
+                    # handing us a refusal. A fire alert must not be lost to one.
+                    betas=["server-side-fallback-2026-07-01"],
+                    fallbacks="default",
+                    output_config={"effort": self.effort, "format": fmt},
+                    cache_control={"type": "ephemeral"},
+                    messages=[{"role": "user", "content": content}],
+                )
+            else:
+                # Small models: no effort control and no fallback routing - just
+                # the structured-output schema, which is what keeps it parseable.
+                resp = client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    system=SYSTEM,
+                    output_config={"format": fmt},
+                    messages=[{"role": "user", "content": content}],
+                )
 
             a.latency_ms = int((time.perf_counter() - t0) * 1000)
 

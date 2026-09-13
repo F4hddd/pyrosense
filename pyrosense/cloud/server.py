@@ -48,7 +48,7 @@ from collections import deque
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
-from .protocol import (MAX_CLIP_BYTES, MAX_EVENT_BYTES,
+from .protocol import (MAX_CLIP_BYTES, clip_filename, MAX_EVENT_BYTES,
                        MAX_FRAME_BYTES, verify)
 
 HERE = os.path.dirname(__file__)
@@ -411,9 +411,10 @@ def create_cloud_app() -> FastAPI:
                                  "X-Frame-Age": str(round(time.time() - item[1], 1))})
 
     @app.get("/api/public/clip/{event_id}")
-    def public_clip(event_id: str, request: Request):
+    def public_clip(event_id: str, request: Request, download: int = 0):
         """Event replay. Served whole rather than range-streamed - these are a few
-        hundred KB and a browser buffers one happily."""
+        hundred KB and a browser buffers one happily. ?download=1 sends it as an
+        attachment named after the camera, kind and time instead of the id."""
         _public_ok(request)
         if not _safe_id(event_id):
             raise HTTPException(400, "bad event id")
@@ -422,8 +423,12 @@ def create_cloud_app() -> FastAPI:
             raise HTTPException(404, "no clip for this event")
         body, ext = item
         mime = "video/mp4" if ext == ".mp4" else "video/x-msvideo"
-        return Response(content=body, media_type=mime,
-                        headers={"Cache-Control": "public, max-age=3600"})
+        headers = {"Cache-Control": "public, max-age=3600"}
+        if download:
+            with store.lock:
+                ev = next((e for e in store.events if e.get("id") == event_id), None)
+            headers["Content-Disposition"] =                 f'attachment; filename="{clip_filename(ev, event_id, ext)}"'
+        return Response(content=body, media_type=mime, headers=headers)
 
     @app.get("/api/public/stream/{camera}")
     def public_stream(camera: str, request: Request):

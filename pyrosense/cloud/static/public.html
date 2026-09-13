@@ -120,6 +120,10 @@
   .clipbar{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--dim)}
   .clipbar a{color:var(--mut);text-decoration:none;border-bottom:1px dotted var(--line)}
   .clipbar a:hover{color:var(--tx)}
+  .clipbar .dl{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;
+    border:1px solid var(--line);border-radius:6px;color:var(--tx);border-bottom:1px solid var(--line)}
+  .clipbar .dl:hover{border-color:var(--mut)}
+  .clipbar .dl svg{width:12px;height:12px}
   .cam{cursor:pointer}
   .cam:hover{border-color:#3a4454}
   .cam .expand{position:absolute;top:8px;right:8px;font-size:10px;color:#cfd6e2;
@@ -245,6 +249,8 @@
 const $ = s => document.querySelector(s);
 const K = new URLSearchParams(location.search).get("k");
 const q = p => p + (K ? (p.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(K) : "");
+const DL_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg>`;
+const dlLink = id => `<a class="dl" href="${q('/api/public/clip/'+encodeURIComponent(id)+'?download=1')}" download title="Download this recording">${DL_ICON}Download</a>`;
 const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 const ago = s => s == null ? "-" : s < 60 ? Math.round(s)+"s" :
                  s < 3600 ? Math.round(s/60)+"m" : (s/3600).toFixed(1)+"h";
@@ -394,7 +400,7 @@ function mevCard(e, acks){
               src="${q('/api/public/clip/'+encodeURIComponent(e.id))}"></video>
          <div class="clipbar"><span>${e.clip_seconds ? e.clip_seconds+"s" : ""} replay -
            before and after detection</span>
-           <a href="${q('/api/public/clip/'+encodeURIComponent(e.id))}" download>download</a></div>`
+           ${dlLink(e.id)}</div>`
       : (e.has_snapshot
           ? `<img src="${q('/api/public/frame/event:'+encodeURIComponent(e.id))}" alt="">
              <div class="clipbar">still only - no clip reached the mirror</div>`
@@ -556,7 +562,8 @@ function evCard(e, acks){
               poster="${e.has_snapshot ? q('/api/public/frame/event:'+encodeURIComponent(e.id)) : ''}"
               src="${q('/api/public/clip/'+encodeURIComponent(e.id))}"></video>
          <div class="clipbar"><span>${e.clip_seconds ? e.clip_seconds+"s" : ""} replay</span>
-           <a href="#" data-cam="${esc(e.camera)}" class="openc">open camera</a></div>`
+           <a href="#" data-cam="${esc(e.camera)}" class="openc">open camera</a>
+           ${dlLink(e.id)}</div>`
       : (e.has_snapshot
           ? `<img src="${q('/api/public/frame/event:'+encodeURIComponent(e.id))}" alt="">` : "")}
     <div class="why">${esc(e.reason||"")}</div>

@@ -111,6 +111,10 @@
   .clipbar{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--dim)}
   .clipbar a{color:var(--mut);text-decoration:none;border-bottom:1px dotted var(--line)}
   .clipbar a:hover{color:var(--tx)}
+  .clipbar .dl{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;
+    border:1px solid var(--line);border-radius:6px;color:var(--tx);border-bottom:1px solid var(--line)}
+  .clipbar .dl:hover{border-color:var(--mut)}
+  .clipbar .dl svg{width:12px;height:12px}
   .cam{cursor:pointer}
   .cam:hover{border-color:#3a4454}
   .cam .expand{position:absolute;top:8px;right:8px;font-size:10px;color:#cfd6e2;
@@ -369,6 +373,9 @@ async function refreshModal(){
   }
 }
 
+const DL_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg>`;
+const dlLink = name => `<a class="dl" href="/api/media/${encodeURIComponent(name)}?download=1" download title="Download this recording">${DL_ICON}Download</a>`;
+
 function clipName(path){
   if(!path) return "";
   return path.split(/[\\/]/).pop();
@@ -388,7 +395,7 @@ function mevCard(e){
               poster="${e.snapshot ? '/api/media/'+e.id+'.jpg' : ''}"
               src="/api/media/${encodeURIComponent(cn)}"></video>
             <div class="clipbar"><span>${e.clip_seconds||""}s replay - before and after detection</span>
-              <a href="/api/media/${encodeURIComponent(cn)}" download>download</a></div>`
+              ${dlLink(cn)}</div>`
         : (e.snapshot ? `<img class="thumb" src="/api/media/${e.id}.jpg" alt="">` : "")}
     <div class="why">${esc(e.reason||"")}</div>
     ${e.adjudication ? `<div class="adj">${esc(e.adjudication)}</div>` : ""}
@@ -546,7 +553,8 @@ function evCard(e, adj, sent){
             poster="${e.snapshot ? '/api/media/'+e.id+'.jpg' : ''}"
             src="/api/media/${encodeURIComponent((e.clip||'').split(/[\\/]/).pop())}"></video>
          <div class="clipbar"><span>${e.clip_seconds||""}s replay</span>
-           <a href="#" class="openc">open camera</a></div>`
+           <a href="#" class="openc">open camera</a>
+           ${dlLink((e.clip||'').split(/[\\/]/).pop())}</div>`
       : (e.snapshot ? `<img class="thumb" src="/api/media/${e.id}.jpg" alt="">` : "")}
     <div class="why">${esc(e.reason)}</div>
     ${adjHtml}

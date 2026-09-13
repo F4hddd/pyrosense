@@ -80,6 +80,8 @@ class CameraWorker(threading.Thread):
         # reviewing an alert actually has.
         self._collectors: list = []
         self._coll_lock = threading.Lock()
+        # Regions the adjudicator confidently dismissed: (kind, box, score, until).
+        self._dismissed: list = []
         self._stop = threading.Event()
 
         # shared, read by the web layer
@@ -230,6 +232,36 @@ class CameraWorker(threading.Thread):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
         return img
 
+    DISMISS_MEMORY_S = 20 * 60
+    DISMISS_IOU = 0.3
+    DISMISS_MARGIN = 0.05     # a clearly stronger detection is judged afresh
+
+    @staticmethod
+    def _iou(b1, b2) -> float:
+        x1, y1 = max(b1[0], b2[0]), max(b1[1], b2[1])
+        x2 = min(b1[0] + b1[2], b2[0] + b2[2])
+        y2 = min(b1[1] + b1[3], b2[1] + b2[3])
+        inter = max(0, x2 - x1) * max(0, y2 - y1)
+        union = b1[2] * b1[3] + b2[2] * b2[3] - inter
+        return inter / union if union > 0 else 0.0
+
+    def _remember_dismissal(self, a: Assessment, score: float, what: str) -> None:
+        now = time.time()
+        self._dismissed = [d for d in self._dismissed if d[3] > now][-20:]
+        self._dismissed.append((a.kind, tuple(a.box), score, now + self.DISMISS_MEMORY_S,
+                                what or "nuisance"))
+
+    def _recall_dismissal(self, a: Assessment) -> str | None:
+        """Memory is bounded three ways so it cannot hide a real fire for long: it
+        expires after 20 minutes, it only covers the same region, and anything
+        scoring above the dismissed detection goes back to the adjudicator."""
+        now = time.time()
+        for kind, box, score, until, what in self._dismissed:
+            if (until > now and kind == a.kind and self._iou(box, a.box) >= self.DISMISS_IOU
+                    and a.score <= score + self.DISMISS_MARGIN):
+                return what
+        return None
+
     def _followup(self, ev: Event, frame: np.ndarray, a: Assessment,
                   pre: list | None = None, collector: dict | None = None) -> None:
         """Clip, adjudication, urgent escalation, delivery and cloud uplink.
@@ -239,7 +271,14 @@ class CameraWorker(threading.Thread):
         Claude and then to Pushover."""
         send, note = True, ev.reason
         adj = None
-        if self.engine.adjudicator is not None:
+        remembered = self._recall_dismissal(a)
+        if remembered is not None:
+            # Same place, same kind, no stronger than what was already judged a
+            # nuisance: reuse that verdict instead of paying for the same answer.
+            send = False
+            note = f"suppressed: same region dismissed earlier as {remembered}"
+            ev.adjudication, ev.verdict = note, "dismissed"
+        elif self.engine.adjudicator is not None:
             s = frame.shape[1] / float(self.cfg.work_width)
             x, y, w, h = [int(v * s) for v in a.box]
             pad = int(0.4 * max(w, h))
@@ -251,6 +290,8 @@ class CameraWorker(threading.Thread):
             adj = self.engine.adjudicator.adjudicate(
                 frame, crop, a.kind, ev.features, camera=self.cfg.name, zone=ev.zone)
             send, note = self.engine.adjudicator.apply(ev.score, adj)
+            if not send and adj.ran:
+                self._remember_dismissal(a, ev.score, adj.nuisance_type)
             ev.stage = "vlm" if adj.ran else ev.stage
             ev.adjudication = note
             ev.verdict = ("confirmed" if adj.confirms else
@@ -402,7 +443,11 @@ class Engine:
             adj = Adjudicator(model=vlm_cfg.get("model", "claude-opus-5"),
                               effort=vlm_cfg.get("effort", "medium"),
                               max_calls_per_hour=int(vlm_cfg.get("max_calls_per_hour", 60)),
-                              fail_open=bool(vlm_cfg.get("fail_open", True)))
+                              fail_open=bool(vlm_cfg.get("fail_open", True)),
+                              max_calls_per_day=int(vlm_cfg.get("max_calls_per_day", 0)),
+                              max_tokens=int(vlm_cfg.get("max_tokens", 2000)),
+                              context_width=int(vlm_cfg.get("context_width", 900)),
+                              crop_width=int(vlm_cfg.get("crop_width", 640)))
             self.adjudicator = adj if adj.available else None
 
         self.workers: dict[str, CameraWorker] = {}
