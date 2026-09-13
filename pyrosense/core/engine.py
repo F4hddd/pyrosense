@@ -82,6 +82,10 @@ class CameraWorker(threading.Thread):
         self._coll_lock = threading.Lock()
         # Regions the adjudicator confidently dismissed: (kind, box, score, until).
         self._dismissed: list = []
+        # kind -> time stage 3 last filtered it. While set, the raw stage-1 alarm
+        # for that kind is not reported as an alarm: the AI has already said what
+        # it is, so the dashboard must not keep it lit as a fire.
+        self._filtered_at: dict = {}
         self._stop = threading.Event()
 
         # shared, read by the web layer
@@ -245,6 +249,10 @@ class CameraWorker(threading.Thread):
         union = b1[2] * b1[3] + b2[2] * b2[3] - inter
         return inter / union if union > 0 else 0.0
 
+    def _filtered(self, kind: str) -> bool:
+        t = self._filtered_at.get(kind)
+        return t is not None and time.time() - t < self.DISMISS_MEMORY_S
+
     def _remember_dismissal(self, a: Assessment, score: float, what: str) -> None:
         now = time.time()
         self._dismissed = [d for d in self._dismissed if d[3] > now][-20:]
@@ -316,6 +324,11 @@ class CameraWorker(threading.Thread):
         except Exception:
             pass
 
+        ev.alerted = send
+        if send:
+            self._filtered_at.pop(ev.kind, None)
+        else:
+            self._filtered_at[ev.kind] = time.time()
         self.engine.store.update(ev)
         self.engine.notify(ev, sent=send, adjudication=adj)
 
@@ -400,7 +413,8 @@ class CameraWorker(threading.Thread):
             armed=bool(self.cascade.zone_mask is None
                        or bool(self.cascade.zone_mask.any())),
             zones=[z.name for z in self.zones.zones],
-            alarm={k: r.active for k, r in self.rules.items()},
+            alarm={k: r.active and not self._filtered(k) for k, r in self.rules.items()},
+            filtered={k: r.active and self._filtered(k) for k, r in self.rules.items()},
             history=hist,
         )
 
@@ -505,6 +519,8 @@ class Engine:
             "uptime_s": round(time.time() - self.started, 1) if self.started else 0,
             "cameras": [w.status() for w in self.workers.values()],
             "events_total": len(self.store.events),
+            "alerts_total": sum(1 for e in self.store.events
+                                if e.alerted and not e.adjudication.startswith("suppressed")),
             "adjudicator": {
                 "enabled": self.adjudicator is not None,
                 "model": self.adjudicator.model if self.adjudicator else None,

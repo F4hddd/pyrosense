@@ -93,6 +93,13 @@
   .ev{padding:11px 14px;border-bottom:1px solid var(--line);display:grid;gap:7px}
   .ev:last-child{border-bottom:0}
   .ev.unack{background:rgba(255,90,31,.05)}
+  .ev.filtered{opacity:.62}
+  .ev.filtered .k{background:var(--panel2)!important;color:var(--dim)!important;border-color:var(--line)!important}
+  .ev .ftag{font-size:10px;color:var(--dim);border:1px dashed var(--line);border-radius:5px;padding:1px 6px}
+  #feed:not(.showfiltered) .ev.filtered{display:none}
+  .ftoggle{display:block;width:100%;padding:8px 14px;background:none;border:0;border-bottom:1px solid var(--line);
+    color:var(--dim);font:inherit;font-size:11px;text-align:left;cursor:pointer}
+  .ftoggle:hover{color:var(--tx)}
   .ev .top{display:flex;align-items:center;gap:8px;font-size:12px}
   .ev .k{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.4px}
   .ev .k.flame{background:rgba(255,90,31,.16);color:var(--flame);border:1px solid rgba(255,90,31,.4)}
@@ -178,7 +185,7 @@
   <div class="pills">
     <div class="pill"><span class="dot" id="dFeed"></span><b id="pFeed">connecting</b></div>
     <div class="pill">cameras <b id="pCams">-</b></div>
-    <div class="pill">events <b id="pEvents">-</b></div>
+    <div class="pill">alerts <b id="pEvents">-</b></div>
     <div class="pill"><span class="dot" id="dAlert"></span>alerting <b id="pAlert">-</b></div>
   </div>
 </header>
@@ -503,7 +510,7 @@ function renderStatus(st){
   const tel = st.telemetry || {}, list = tel.cameras || [];
   const conn = list.filter(c => c.source && c.source.connected).length;
   $("#pCams").textContent = `${conn}/${list.length}`;
-  $("#pEvents").textContent = tel.events_total ?? "-";
+  $("#pEvents").textContent = tel.alerts_total ?? tel.events_total ?? "-";
 
   const al = tel.alerting || {};
   const chans = Object.entries(al.channels || {})
@@ -548,12 +555,15 @@ async function doAck(id, btn, card){
 function evCard(e, acks){
   const d = document.createElement("div");
   const acked = e.acknowledged || acks?.[e.id];
-  d.className = "ev" + (acked ? "" : " unack");
+  const filtered = e.sent === false || e.alerted === false ||
+                   (e.adjudication||"").startsWith("suppressed");
+  d.className = "ev" + (filtered ? " filtered" : (acked ? "" : " unack"));
   d.dataset.id = e.id;
   d.innerHTML = `
     <div class="top">
       <span class="k ${e.kind}">${(e.kind||"").toUpperCase()}</span>
       <span class="cm">${esc(e.camera)}</span>
+      ${filtered ? `<span class="ftag">filtered by AI - no alert sent</span>` : ""}
       <span style="color:var(--mut)">${Math.round((e.score||0)*100)}%</span>
       <span class="t">${new Date((e.started||0)*1000).toLocaleTimeString()}</span>
     </div>
@@ -582,15 +592,42 @@ function renderEvents(list, acks){
   // Only rebuild when something actually changed. The feed now contains <video>
   // elements, and re-rendering every 5 seconds would restart any clip a person
   // is in the middle of watching.
-  const sig = list.map(e => e.id + (e.has_clip?"c":"") +
+  const sig = list.map(e => e.id + (e.has_clip?"c":"") + (e.sent===false||e.alerted===false?"f":"") +
                             (e.acknowledged||acks?.[e.id] ? "a":"")).join(",");
   if(sig === feed.dataset.sig) return;
   feed.dataset.sig = sig;
   feed.innerHTML = "";
   if(!list.length){ feed.innerHTML = '<div class="empty">No alerts recorded.</div>'; }
   else list.forEach(e => feed.appendChild(evCard(e, acks)));
-  $("#evCount").textContent = list.length;
+  syncFilteredToggle();
 }
+
+// Detections the AI identified as a nuisance are kept (they are how a site gets
+// tuned) but they are not alarms, so they sit behind a toggle, greyed out.
+let showFiltered = false;
+function syncFilteredToggle(){
+  const feed = $("#feed");
+  const n = feed.querySelectorAll(".ev.filtered").length;
+  const real = feed.querySelectorAll(".ev:not(.filtered)").length;
+  let t = document.getElementById("ftoggle");
+  if(!t){
+    t = document.createElement("button"); t.id = "ftoggle"; t.className = "ftoggle";
+    t.onclick = () => { showFiltered = !showFiltered; syncFilteredToggle(); };
+    feed.parentNode.insertBefore(t, feed);
+  }
+  t.hidden = n === 0;
+  t.textContent = (showFiltered ? "Hide " : "Show ") + n + " filtered by AI (not fires)";
+  feed.classList.toggle("showfiltered", showFiltered);
+  $("#evCount").textContent = real;
+  const empty = feed.querySelector(".empty");
+  if(!real && !empty && !showFiltered){
+    const e = document.createElement("div"); e.className = "empty emptyf";
+    e.textContent = "No alerts. " + n + " detection" + (n===1?"":"s") + " filtered by AI.";
+    feed.appendChild(e);
+  }
+  if((real || showFiltered) && feed.querySelector(".emptyf")) feed.querySelector(".emptyf").remove();
+}
+
 
 async function refresh(){
   try{

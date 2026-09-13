@@ -87,6 +87,9 @@ class Event:
     zone: str = ""
     acknowledged: bool = False
     escalated: bool = False
+    # False when stage 3 filtered it out. The event is still recorded - it is
+    # the evidence for tuning a site - but it never alerted anyone.
+    alerted: bool = True
 
     def to_json(self) -> dict:
         d = asdict(self)

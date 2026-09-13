@@ -163,6 +163,7 @@ class CloudUplink:
                     neural=st.get("neural", {}),
                     alerting=st.get("alerting", {}),
                     events_total=st.get("events_total", 0),
+                    alerts_total=st.get("alerts_total", 0),
                     dry_run=st.get("dry_run", True),
                 )
                 body = json.dumps(tel.to_json()).encode()

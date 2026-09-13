@@ -94,6 +94,13 @@
   .ev .adj.ok{border-left-color:var(--ok)}
   .ev .adj.sup{border-left-color:var(--dim);color:var(--dim)}
   .ev .acts{display:flex;gap:6px}
+  .ev.filtered{opacity:.62}
+  .ev.filtered .k{background:var(--panel2)!important;color:var(--dim)!important;border-color:var(--line)!important}
+  .ev .ftag{font-size:10px;color:var(--dim);border:1px dashed var(--line);border-radius:5px;padding:1px 6px}
+  #feed:not(.showfiltered) .ev.filtered{display:none}
+  .ftoggle{display:block;width:100%;padding:8px 14px;background:none;border:0;border-bottom:1px solid var(--line);
+    color:var(--dim);font:inherit;font-size:11px;text-align:left;cursor:pointer}
+  .ftoggle:hover{color:var(--tx)}
   .btn{flex:1;padding:5px 8px;font-size:11px;border-radius:6px;cursor:pointer;
     background:var(--panel2);border:1px solid var(--line);color:var(--mut)}
   .btn:hover{border-color:#3a4454;color:var(--tx)}
@@ -534,7 +541,8 @@ function renderStatus(st){
 
 function evCard(e, adj, sent){
   const d = document.createElement("div");
-  d.className = "ev"; d.dataset.id = e.id;
+  const filtered = sent === false || e.alerted === false;
+  d.className = "ev" + (filtered ? " filtered" : ""); d.dataset.id = e.id;
   const cls = e.kind === "flame" ? "flame" : "smoke";
   let adjHtml = "";
   if(e.adjudication){
@@ -545,6 +553,7 @@ function evCard(e, adj, sent){
     <div class="top">
       <span class="k ${cls}">${e.kind.toUpperCase()}</span>
       <span class="cam2">${esc(e.camera)}</span>
+      ${filtered ? `<span class="ftag">filtered by AI - no alert sent</span>` : ""}
       <span style="color:var(--mut)">${Math.round(e.score*100)}%</span>
       <span class="t">${fmtAgo(e.started)}</span>
     </div>
@@ -574,12 +583,41 @@ function evCard(e, adj, sent){
   return d;
 }
 
+
+// Detections the AI identified as a nuisance are kept (they are how a site gets
+// tuned) but they are not alarms, so they sit behind a toggle, greyed out.
+let showFiltered = false;
+function syncFilteredToggle(){
+  const feed = $("#feed");
+  const n = feed.querySelectorAll(".ev.filtered").length;
+  const real = feed.querySelectorAll(".ev:not(.filtered)").length;
+  let t = document.getElementById("ftoggle");
+  if(!t){
+    t = document.createElement("button"); t.id = "ftoggle"; t.className = "ftoggle";
+    t.onclick = () => { showFiltered = !showFiltered; syncFilteredToggle(); };
+    feed.parentNode.insertBefore(t, feed);
+  }
+  t.hidden = n === 0;
+  t.textContent = (showFiltered ? "Hide " : "Show ") + n + " filtered by AI (not fires)";
+  feed.classList.toggle("showfiltered", showFiltered);
+  $("#evCount").textContent = real;
+  const empty = feed.querySelector(".empty");
+  if(!real && !empty && !showFiltered){
+    const e = document.createElement("div"); e.className = "empty emptyf";
+    e.textContent = "No alerts. " + n + " detection" + (n===1?"":"s") + " filtered by AI.";
+    feed.appendChild(e);
+  }
+  if((real || showFiltered) && feed.querySelector(".emptyf")) feed.querySelector(".emptyf").remove();
+}
+
 function addEvent(e, adj, sent){
   const feed = $("#feed");
-  if(feed.querySelector(".empty")) feed.innerHTML = "";
+  feed.querySelectorAll(".empty").forEach(x => x.remove());
+  const old = feed.querySelector(`.ev[data-id="${CSS.escape(e.id)}"]`);
+  if(old) old.remove();
   feed.prepend(evCard(e, adj, sent));
-  while(feed.children.length > 40) feed.removeChild(feed.lastChild);
-  $("#evCount").textContent = feed.children.length;
+  while(feed.children.length > 60) feed.removeChild(feed.lastChild);
+  syncFilteredToggle();
 }
 
 async function boot(){
@@ -589,7 +627,7 @@ async function boot(){
       fetch("/api/events?limit=25").then(r=>r.json())
     ]);
     renderStatus(st);
-    ev.slice().reverse().forEach(e => addEvent(e, null, e.verdict !== "dismissed"));
+    ev.slice().reverse().forEach(e => addEvent(e, null, e.alerted !== false && !(e.adjudication||"").startsWith("suppressed")));
   }catch(err){ console.error(err); }
 
   const proto = location.protocol === "https:" ? "wss" : "ws";

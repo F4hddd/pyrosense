@@ -94,6 +94,7 @@ class Telemetry:
     neural: dict = field(default_factory=dict)
     alerting: dict = field(default_factory=dict)
     events_total: int = 0
+    alerts_total: int = 0
     dry_run: bool = True
 
     def to_json(self) -> dict:
