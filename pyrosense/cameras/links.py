@@ -3,7 +3,7 @@ Turn a pasted stream link into a camera source.
 
 Installers and camera apps hand people a full URL, credentials and all:
 
-    rtsp://admin:L25B...@192.168.100.10:554/cam/realmonitor?channel=1&subtype=0
+    rtsp://admin:password@192.168.1.20:554/cam/realmonitor?channel=1&subtype=0
 
 That is the most natural thing to paste into an "add camera" box, so this module
 accepts it, splits the password out (it is stored separately, never in the site
