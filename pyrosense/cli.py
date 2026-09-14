@@ -18,10 +18,15 @@ import sys
 import time
 
 
-def _serve(engine, host: str, port: int, open_browser: bool = False) -> None:
+def _serve(engine, host: str, port: int, open_browser: bool = False,
+           config_path: str = "") -> None:
     import uvicorn
     from .server.app import create_app
-    app = create_app(engine)
+    site = None
+    if config_path and config_path.endswith(".json"):
+        from .core.site import SiteConfig
+        site = SiteConfig(config_path)
+    app = create_app(engine, site=site)
     engine.start()
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '') else host}:{port}"
     print(f"\n  PyroSense console -> {url}\n")
@@ -70,7 +75,7 @@ def cmd_run(a) -> None:
     print(f"  urgent alerting: {', '.join(live) or 'none configured'}"
           f"{'  (DRY RUN)' if ch.get('dry_run') else ''}")
     print(f"  cloud uplink: {'-> ' + cfg['cloud']['url'] if uplink else 'disabled'}")
-    _serve(engine, a.host, a.port)
+    _serve(engine, a.host, a.port, config_path=a.config)
 
 
 def cmd_cloud(a) -> None:

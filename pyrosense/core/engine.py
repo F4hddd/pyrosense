@@ -420,6 +420,14 @@ class CameraWorker(threading.Thread):
 
     def stop(self) -> None:
         self._stop.set()
+        src = self.source
+        if src is not None:
+            # Kill ffmpeg now rather than waiting for the loop to notice, so a
+            # removed camera's RTSP session is released immediately.
+            try:
+                src.stop()
+            except Exception:
+                pass
 
 
 class Engine:
@@ -464,8 +472,13 @@ class Engine:
                               crop_width=int(vlm_cfg.get("crop_width", 640)))
             self.adjudicator = adj if adj.available else None
 
+        # Copy-on-write: add/remove swap in a new dict, so the uplink and status
+        # threads iterating the old one never see it change size under them.
         self.workers: dict[str, CameraWorker] = {}
+        self.camera_cfgs: dict[str, CameraConfig] = {}
+        self._cam_lock = threading.Lock()
         for c in cameras:
+            self.camera_cfgs[c.name] = c
             if c.enabled:
                 self.workers[c.name] = CameraWorker(c, self)
         self.subscribers: list = []
@@ -487,6 +500,44 @@ class Engine:
             self.escalation.stop()
         if self.uplink is not None:
             self.uplink.stop()
+
+    # ------------------------------------------------------- camera management
+    def add_camera(self, cfg: CameraConfig) -> None:
+        with self._cam_lock:
+            if cfg.name in self.camera_cfgs:
+                raise ValueError(f"camera {cfg.name} already exists")
+            self.camera_cfgs = {**self.camera_cfgs, cfg.name: cfg}
+            if cfg.enabled:
+                self._start_worker(cfg)
+
+    def replace_camera(self, cfg: CameraConfig) -> None:
+        """Restart one camera with a new config. Other cameras never blink."""
+        with self._cam_lock:
+            self._stop_worker(cfg.name)
+            self.camera_cfgs = {**self.camera_cfgs, cfg.name: cfg}
+            if cfg.enabled:
+                self._start_worker(cfg)
+
+    def remove_camera(self, name: str) -> None:
+        """Stops detection for the camera. Its recorded events and clips are kept."""
+        with self._cam_lock:
+            if name not in self.camera_cfgs:
+                raise KeyError(name)
+            self._stop_worker(name)
+            self.camera_cfgs = {k: v for k, v in self.camera_cfgs.items() if k != name}
+
+    def _start_worker(self, cfg: CameraConfig) -> None:
+        w = CameraWorker(cfg, self)
+        self.workers = {**self.workers, cfg.name: w}
+        if self.started:
+            w.start()
+
+    def _stop_worker(self, name: str) -> None:
+        w = self.workers.get(name)
+        if w is None:
+            return
+        self.workers = {k: v for k, v in self.workers.items() if k != name}
+        w.stop()
 
     def acknowledge(self, event_id: str, by: str = "operator") -> bool:
         """Stop the escalation ladder for one incident and record who did it.
@@ -518,13 +569,16 @@ class Engine:
         return {
             "uptime_s": round(time.time() - self.started, 1) if self.started else 0,
             "cameras": [w.status() for w in self.workers.values()],
+            "cameras_disabled": [n for n, c in self.camera_cfgs.items() if not c.enabled],
             "events_total": len(self.store.events),
             "alerts_total": sum(1 for e in self.store.events
                                 if e.alerted and not e.adjudication.startswith("suppressed")),
             "adjudicator": {
                 "enabled": self.adjudicator is not None,
                 "model": self.adjudicator.model if self.adjudicator else None,
-                "calls_last_hour": len(self.adjudicator._calls) if self.adjudicator else 0,
+                "calls_last_hour": (sum(1 for t in self.adjudicator._calls
+                                        if time.time() - t < 3600)
+                                    if self.adjudicator else 0),
                 "budget": self.adjudicator.max_calls_per_hour if self.adjudicator else 0,
             },
             "neural": self.neural.status(),

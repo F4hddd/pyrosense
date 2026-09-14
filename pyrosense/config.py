@@ -14,12 +14,28 @@ from dataclasses import asdict
 
 from .core.engine import CameraConfig
 
-_ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_ENV = re.compile(r"\$\{(secret:)?([A-Za-z_][A-Za-z0-9_:.-]*)\}")
+SECRETS_PATH = os.path.join("data", "secrets.json")
 
 
-def _expand(obj):
+def read_secrets() -> dict:
+    """Passwords for cameras added from the console. data/ is gitignored, so these
+    stay on the site machine; the config file only holds ${secret:...} references."""
+    try:
+        with open(SECRETS_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _expand(obj, _secrets=None):
     if isinstance(obj, str):
-        return _ENV.sub(lambda m: os.environ.get(m.group(1), ""), obj)
+        if "${" not in obj:
+            return obj
+        if _secrets is None and "${secret:" in obj:
+            _secrets = read_secrets()
+        return _ENV.sub(lambda m: (_secrets or {}).get(m.group(2), "") if m.group(1)
+                        else os.environ.get(m.group(2), ""), obj)
     if isinstance(obj, dict):
         return {k: _expand(v) for k, v in obj.items()}
     if isinstance(obj, list):

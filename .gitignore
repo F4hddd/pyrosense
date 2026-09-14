@@ -9,6 +9,9 @@ venv/
 # shape of your credentials. pyrosense.config.example.json is the one to commit.
 pyrosense.config.json
 pyrosense.local.json
+# backups and temp files the console writes when cameras are added or removed
+*.json.bak
+*.json.tmp
 *.env
 .env
 

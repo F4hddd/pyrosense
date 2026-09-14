@@ -171,6 +171,56 @@
     display:grid;gap:8px;background:var(--panel2)}
   .banner{margin:0 16px;padding:9px 14px;border-radius:9px;font-size:12.5px;
     background:rgba(251,191,36,.09);border:1px solid rgba(251,191,36,.32);color:#e8cf94}
+
+  /* ---------------- camera management ---------------- */
+  .hbtn{display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--tx);font:inherit;
+    font-size:12px;cursor:pointer}
+  .hbtn:hover{border-color:#3a4454}
+  .hbtn svg{width:13px;height:13px}
+  .addtile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    min-height:220px;border:1px dashed var(--line);border-radius:12px;color:var(--dim);
+    background:transparent;font:inherit;font-size:13px;cursor:pointer}
+  .addtile:hover{color:var(--tx);border-color:#3a4454}
+  .addtile .plus{font-size:26px;line-height:1}
+  .cm{width:min(860px,100%)}
+  .cmbody{padding:16px;display:grid;gap:16px}
+  .cmsec h4{margin:0 0 9px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--dim);font-weight:600}
+  .cmrow{border:1px solid var(--line);border-radius:10px;background:var(--panel2);margin-bottom:8px}
+  .cmrow .r1{display:flex;align-items:center;gap:10px;padding:10px 12px;flex-wrap:wrap}
+  .cmrow .nm{font-weight:600}
+  .cmrow .loc{color:var(--mut);font-size:12px}
+  .cmrow .lk{flex-basis:100%;font-size:11px;color:var(--dim);overflow-wrap:anywhere}
+  .cmrow .st{margin-left:auto;font-size:11.5px;color:var(--mut)}
+  .cmrow .err{flex-basis:100%;font-size:11px;color:var(--bad)}
+  .cmrow.off{opacity:.6}
+  .cmrow .edit{display:none;border-top:1px solid var(--line);padding:12px}
+  .cmrow.editing .edit{display:grid;gap:10px}
+  .sbtn{padding:5px 10px;font-size:12px;border-radius:7px;cursor:pointer;font:inherit;font-size:12px;
+    background:var(--panel);border:1px solid var(--line);color:var(--mut)}
+  .sbtn:hover{border-color:#3a4454;color:var(--tx)}
+  .sbtn.primary{background:var(--accent);border-color:var(--accent);color:#1a0a02;font-weight:600}
+  .sbtn.primary:hover{filter:brightness(1.08);color:#1a0a02}
+  .sbtn.danger:hover{border-color:var(--bad);color:var(--bad)}
+  .sbtn:disabled{opacity:.5;cursor:default}
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:640px){.fgrid{grid-template-columns:1fr}}
+  .fld{display:grid;gap:4px;font-size:11.5px;color:var(--mut)}
+  .fld.wide{grid-column:1/-1}
+  .fld input[type=text],.fld select{background:var(--bg);border:1px solid var(--line);color:var(--tx);
+    border-radius:7px;padding:8px 10px;font:inherit;font-size:13px;width:100%}
+  .fld input:focus,.fld select:focus{outline:none;border-color:#4a5568}
+  .fld .hint{color:var(--dim);font-size:11px;line-height:1.4}
+  .fld input[type=range]{width:100%;accent-color:var(--accent)}
+  .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mut)}
+  .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .msg{font-size:12px;line-height:1.45}
+  .msg.bad{color:var(--bad)} .msg.good{color:var(--ok)}
+  .preview[hidden]{display:none}
+  .preview{border-radius:9px;border:1px solid var(--line);max-width:100%;display:block}
+  .mngl{color:var(--mut);font-size:12px;background:none;border:0;padding:0;cursor:pointer;
+    font:inherit;font-size:12px;text-decoration:underline dotted}
 </style>
 </head>
 <body>
@@ -186,6 +236,9 @@
     <div class="pill">gate <b id="pGate">–</b></div>
     <div class="pill"><span class="dot" id="dAdj"></span> adjudicator <b id="pAdj">–</b></div>
     <div class="pill">uptime <b id="pUp">–</b></div>
+    <button class="hbtn" id="openMgr" title="Add, edit or remove cameras">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="M10.5 7l4-2v6l-4-2"/></svg>
+      Manage cameras</button>
   </div>
 </header>
 
@@ -239,11 +292,58 @@
             <a id="mDl" href="#" download
                style="color:var(--mut);font-size:12px">download still</a>
           </div>
+          <div class="mrow" style="border-top:1px solid var(--line);padding-top:9px">
+            <button class="mngl" id="mManage">Edit, disable or remove this camera</button>
+          </div>
         </div>
       </div>
       <div class="mright">
         <h3>Recordings for this camera</h3>
         <div id="mEvents"><div class="empty">No recordings yet.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="cmBackdrop">
+  <div class="modal cm" role="dialog" aria-modal="true" aria-labelledby="cmTitle">
+    <div class="mhead">
+      <span class="mt" id="cmTitle">Cameras</span>
+      <span class="ml" id="cmSub"></span>
+      <button class="x" id="cmClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="cmbody">
+      <div class="cmsec">
+        <h4>Add a camera</h4>
+        <div class="fgrid">
+          <label class="fld wide">Stream link
+            <input type="text" id="aLink" autocomplete="off" spellcheck="false"
+              placeholder="rtsp://admin:password@192.168.1.20:554/cam/realmonitor?channel=1&subtype=0">
+            <span class="hint">Paste the RTSP link from the camera or its app. The password is
+              saved on this computer only, never in the config file or online.</span>
+          </label>
+          <label class="fld">Name
+            <input type="text" id="aName" placeholder="e.g. paint-booth (optional)" autocomplete="off"></label>
+          <label class="fld">Location
+            <input type="text" id="aLoc" placeholder="e.g. Paint booth" autocomplete="off"></label>
+          <label class="fld">Detection stream
+            <select id="aStream">
+              <option value="sub">Low-res substream (recommended)</option>
+              <option value="as_is">Exactly the link I pasted</option>
+            </select></label>
+          <label class="chk" style="align-self:end;padding-bottom:9px">
+            <input type="checkbox" id="aSmoke"> Detect smoke too</label>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button class="sbtn" id="aTest">Test connection</button>
+          <button class="sbtn primary" id="aAdd">Add camera</button>
+          <span class="msg" id="aMsg"></span>
+        </div>
+        <img class="preview" id="aPrev" alt="Test frame from the camera" hidden style="margin-top:10px;max-height:240px">
+      </div>
+      <div class="cmsec">
+        <h4>Cameras on this site</h4>
+        <div id="cmList"><div class="empty">Loading…</div></div>
       </div>
     </div>
   </div>
@@ -446,6 +546,7 @@ function attachVideo(img, name){
     img.onload = null;
     img.onerror = null;
     const tick = () => {
+      if(!img.isConnected){ timer = null; return; }
       const probe = new Image();
       probe.onload = () => {
         failures = 0; delay = 320;
@@ -472,6 +573,21 @@ function poly(hist, idx){
 
 function renderCams(st){
   const grid = $("#grid");
+  const live = new Set(st.cameras.map(c => c.name));
+  for(const [name, el] of cams){
+    if(!live.has(name)){
+      el.querySelector("img").src = "";
+      el.remove(); cams.delete(name);
+      if(openCam === name) closeCamera();
+    }
+  }
+  let add = document.getElementById("addTile");
+  if(!add){
+    add = document.createElement("button");
+    add.id = "addTile"; add.className = "addtile";
+    add.innerHTML = '<span class="plus">+</span>Add a camera';
+    add.onclick = () => openManager();
+  }
   for(const c of st.cameras){
     let el = cams.get(c.name);
     if(!el){ el = camTile(c); cams.set(c.name, el); grid.appendChild(el); }
@@ -510,6 +626,7 @@ function renderCams(st){
     el.querySelector(".gt").textContent  = Math.round((c.gate_rate||0)*100)+"%";
     el.querySelector(".err").textContent = c.error || (c.source.error||"").slice(0,60);
   }
+  grid.appendChild(add);     // keeps it last
 }
 
 function renderStatus(st){
@@ -641,6 +758,178 @@ async function boot(){
     if(d.type === "event") addEvent(d.event, d.adjudication, d.sent);
   };
 }
+/* ---------------- camera management ---------------- */
+let mgrOpen = false, mgrFocus = null, mgrEditing = new Set();
+
+async function api(method, url, body){
+  const r = await fetch(url, {method, headers: body ? {"Content-Type":"application/json"} : {},
+                              body: body ? JSON.stringify(body) : undefined});
+  let data = {};
+  try{ data = await r.json(); }catch(e){}
+  if(!r.ok) throw new Error(data.detail || ("HTTP " + r.status));
+  return data;
+}
+function setMsg(el, text, kind){ el.textContent = text || ""; el.className = "msg " + (kind||""); }
+
+function openManager(focus){
+  mgrOpen = true; mgrFocus = focus || null;
+  if(focus) mgrEditing.add(focus);
+  if(openCam) closeCamera();
+  $("#cmBackdrop").classList.add("open");
+  document.body.style.overflow = "hidden";
+  loadManager();
+}
+function closeManager(){
+  mgrOpen = false; mgrEditing.clear();
+  $("#cmBackdrop").classList.remove("open");
+  document.body.style.overflow = "";
+}
+$("#openMgr").onclick = () => openManager();
+$("#cmClose").onclick = closeManager;
+$("#cmBackdrop").addEventListener("click", e => { if(e.target === $("#cmBackdrop")) closeManager(); });
+document.addEventListener("keydown", e => { if(e.key === "Escape" && mgrOpen) closeManager(); });
+$("#mManage").onclick = () => { const n = openCam; openManager(n); };
+
+async function loadManager(){
+  let d;
+  try{ d = await api("GET", "/api/cameras"); }
+  catch(e){ $("#cmList").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  $("#cmSub").textContent = d.manageable
+    ? `${d.cameras.length} camera${d.cameras.length===1?"":"s"}`
+    : "demo mode - changes are disabled";
+  ["#aTest","#aAdd"].forEach(id => $(id).disabled = !d.manageable);
+  const host = $("#cmList");
+  host.innerHTML = "";
+  if(!d.cameras.length){ host.innerHTML = '<div class="empty">No cameras yet. Add one above.</div>'; return; }
+  d.cameras.forEach(c => host.appendChild(mgrRow(c, d.manageable)));
+  if(mgrFocus){
+    const el = host.querySelector(`[data-name="${CSS.escape(mgrFocus)}"]`);
+    if(el) el.scrollIntoView({block:"center"});
+    mgrFocus = null;
+  }
+}
+
+function mgrRow(c, manageable){
+  const row = document.createElement("div");
+  row.className = "cmrow" + (c.enabled ? "" : " off") + (mgrEditing.has(c.name) ? " editing" : "");
+  row.dataset.name = c.name;
+  const state = !c.enabled ? "disabled"
+    : c.connected ? `live · ${c.fps ?? "–"} fps` : (c.error ? "not connecting" : "connecting…");
+  const dot = !c.enabled ? "" : c.connected ? "on" : "off";
+  row.innerHTML = `
+    <div class="r1">
+      <span class="dot ${dot}"></span>
+      <span class="nm">${esc(c.name)}</span>
+      <span class="loc">${esc(c.location||"")}</span>
+      <span class="st">${state}</span>
+      ${manageable ? `<button class="sbtn" data-a="edit">${mgrEditing.has(c.name) ? "Close" : "Edit"}</button>
+      <button class="sbtn" data-a="toggle">${c.enabled ? "Disable" : "Enable"}</button>
+      <button class="sbtn danger" data-a="remove">Remove</button>` : ""}
+      <span class="lk mono">${esc(c.link||"")}</span>
+      ${c.enabled && !c.connected && c.error ? `<span class="err">${esc(c.error)}</span>` : ""}
+    </div>
+    <div class="edit">
+      <div class="fgrid">
+        <label class="fld">Location
+          <input type="text" data-f="location" value="${esc(c.location||"")}"></label>
+        <label class="chk" style="align-self:end;padding-bottom:9px">
+          <input type="checkbox" data-f="detect_smoke" ${c.detect_smoke ? "checked" : ""}> Detect smoke</label>
+        <label class="fld">Flame sensitivity threshold <b data-v="flame">${(c.flame_threshold||0.72).toFixed(2)}</b>
+          <input type="range" min="0.5" max="0.95" step="0.01" data-f="flame_threshold" value="${c.flame_threshold||0.72}">
+          <span class="hint">Higher = fewer false alarms, slower to trigger.</span></label>
+        <label class="fld">Smoke threshold <b data-v="smoke">${(c.smoke_threshold||0.7).toFixed(2)}</b>
+          <input type="range" min="0.5" max="0.95" step="0.01" data-f="smoke_threshold" value="${c.smoke_threshold||0.7}"></label>
+        <label class="fld wide">Replace stream link <span class="hint">(optional - leave blank to keep the current one)</span>
+          <input type="text" data-f="link" autocomplete="off" spellcheck="false" placeholder="rtsp://user:password@address:554/...">
+        </label>
+      </div>
+      <div class="actions">
+        <button class="sbtn primary" data-a="save">Save changes</button>
+        <span class="msg" data-m></span>
+      </div>
+    </div>`;
+  const msg = row.querySelector("[data-m]");
+  row.querySelectorAll('input[type=range]').forEach(r => r.oninput = () => {
+    row.querySelector(`[data-v="${r.dataset.f.split("_")[0]}"]`).textContent = (+r.value).toFixed(2);
+  });
+  row.querySelectorAll("button[data-a]").forEach(b => b.onclick = async () => {
+    const a = b.dataset.a;
+    if(a === "edit"){
+      mgrEditing.has(c.name) ? mgrEditing.delete(c.name) : mgrEditing.add(c.name);
+      row.classList.toggle("editing"); b.textContent = row.classList.contains("editing") ? "Close" : "Edit";
+      return;
+    }
+    if(a === "remove"){
+      if(!confirm(`Remove ${c.name}${c.location ? " ("+c.location+")" : ""}?\n\n` +
+                  "Detection stops and it is taken out of the config. " +
+                  "Its past alerts and recordings are kept.")) return;
+      b.disabled = true;
+      try{ await api("DELETE", `/api/cameras/${encodeURIComponent(c.name)}`); mgrEditing.delete(c.name); }
+      catch(e){ alert(e.message); }
+      loadManager(); pollStatusSoon();
+      return;
+    }
+    if(a === "toggle"){
+      b.disabled = true;
+      try{ await api("PATCH", `/api/cameras/${encodeURIComponent(c.name)}`, {enabled: !c.enabled}); }
+      catch(e){ alert(e.message); }
+      loadManager(); pollStatusSoon();
+      return;
+    }
+    if(a === "save"){
+      const body = {};
+      row.querySelectorAll("[data-f]").forEach(f => {
+        const k = f.dataset.f;
+        if(f.type === "checkbox") body[k] = f.checked;
+        else if(f.type === "range") body[k] = +f.value;
+        else if(k === "link"){ if(f.value.trim()) body.link = f.value.trim(); }
+        else body[k] = f.value;
+      });
+      b.disabled = true; setMsg(msg, body.link ? "Saving and reconnecting…" : "Saving…");
+      try{
+        const r = await api("PATCH", `/api/cameras/${encodeURIComponent(c.name)}`, body);
+        setMsg(msg, r.restarted ? "Saved. Camera is reconnecting with the new link." : "Saved.", "good");
+        setTimeout(loadManager, body.link ? 4000 : 900);
+        pollStatusSoon();
+      }catch(e){ setMsg(msg, e.message, "bad"); }
+      b.disabled = false;
+    }
+  });
+  return row;
+}
+
+$("#aTest").onclick = async () => {
+  const b = $("#aTest"), msg = $("#aMsg"), prev = $("#aPrev");
+  b.disabled = true; prev.hidden = true;
+  setMsg(msg, "Connecting to the camera (up to 15 seconds)…");
+  try{
+    const r = await api("POST", "/api/cameras/test", {link: $("#aLink").value, stream: $("#aStream").value});
+    if(r.ok){ prev.src = r.preview; prev.hidden = false; setMsg(msg, "Connected - this is what the detector will see.", "good"); }
+    else setMsg(msg, r.error + (r.error.includes("password") ? " Check it before trying again - repeated wrong passwords can lock the camera." : ""), "bad");
+  }catch(e){ setMsg(msg, e.message, "bad"); }
+  b.disabled = false;
+};
+
+$("#aAdd").onclick = async () => {
+  const b = $("#aAdd"), msg = $("#aMsg");
+  b.disabled = true; setMsg(msg, "Adding…");
+  try{
+    const r = await api("POST", "/api/cameras", {
+      link: $("#aLink").value, name: $("#aName").value, location: $("#aLoc").value,
+      stream: $("#aStream").value, detect_smoke: $("#aSmoke").checked});
+    setMsg(msg, `Added ${r.camera.name}. It will appear on the dashboard as soon as video arrives.`, "good");
+    ["#aLink","#aName","#aLoc"].forEach(id => $(id).value = "");
+    $("#aSmoke").checked = false; $("#aPrev").hidden = true;
+    loadManager(); pollStatusSoon();
+    setTimeout(() => mgrOpen && loadManager(), 5000);
+  }catch(e){ setMsg(msg, e.message, "bad"); }
+  b.disabled = false;
+};
+
+async function pollStatusSoon(){
+  try{ renderStatus(await fetch("/api/status").then(r=>r.json())); }catch(e){}
+}
+
 boot();
 setInterval(()=>document.querySelectorAll(".ev .t").forEach(el=>{}), 15000);
 </script>

@@ -427,6 +427,15 @@ function renderCams(st){
   if(list.length && grid.querySelector(".empty")) grid.innerHTML = "";
   const offline = st.health === "offline" || st.health === "never_connected";
 
+  // A camera removed or disabled at the site drops out of telemetry; drop its tile.
+  // Only while the site is reporting - an offline site keeps its last known tiles.
+  if(!offline){
+    const names = new Set(list.map(c => c.name));
+    for(const [name, el] of cams){
+      if(!names.has(name)){ el.remove(); cams.delete(name); }
+    }
+  }
+
   for(const c of list){
     let el = cams.get(c.name);
     if(!el){ el = camTile(c.name); cams.set(c.name, el); grid.appendChild(el); }

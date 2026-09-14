@@ -120,6 +120,11 @@ class FFmpegSource(BaseSource):
         self._recent: deque = deque(maxlen=300)
 
     # ---------------------------------------------------------------- ffmpeg
+    def _transport_args(self) -> list[str]:
+        """-rtsp_transport is an RTSP demuxer option; ffmpeg rejects it for an
+        HTTP (MJPEG) camera, so it is only passed for rtsp:// links."""
+        return ["-rtsp_transport", self.transport] if self.url.startswith("rtsp") else []
+
     def _probe_size(self) -> tuple[int, int]:
         """Ask ffprobe for the real frame size so we know how many bytes make a
         frame. Falls back to a 16:9 guess, which is right for almost everything."""
@@ -127,7 +132,7 @@ class FFmpegSource(BaseSource):
         if exe:
             try:
                 out = subprocess.run(
-                    [exe, "-v", "error", "-rtsp_transport", self.transport,
+                    [exe, "-v", "error", *self._transport_args(),
                      "-select_streams", "v:0", "-show_entries",
                      "stream=width,height,codec_name", "-of", "csv=p=0",
                      "-timeout", str(int(self.timeout_s * 1_000_000)), self.url],
@@ -148,7 +153,7 @@ class FFmpegSource(BaseSource):
         self._h = h
         cmd = [
             FFMPEG, "-hide_banner", "-loglevel", "error",
-            "-rtsp_transport", self.transport,
+            *self._transport_args(),
             "-timeout", str(int(self.timeout_s * 1_000_000)),
             "-fflags", "nobuffer", "-flags", "low_delay",
             "-i", self.url,
@@ -329,10 +334,14 @@ def make_source(spec: dict) -> BaseSource:
     if kind == "file":
         return FileSource(spec["path"], name=name, loop=spec.get("loop", True))
     from .profiles import build_url
-    url = spec.get("url") or build_url(
-        spec.get("brand", "generic"), spec["host"], spec.get("user", ""),
-        spec.get("password", ""), spec.get("channel", 1),
-        spec.get("stream", "sub"), spec.get("port"))
+    if spec.get("url"):
+        from .links import with_credentials
+        url = with_credentials(spec["url"], spec.get("user", ""), spec.get("password", ""))
+    else:
+        url = build_url(
+            spec.get("brand", "generic"), spec["host"], spec.get("user", ""),
+            spec.get("password", ""), spec.get("channel", 1),
+            spec.get("stream", "sub"), spec.get("port"))
     return FFmpegSource(url, name=name, width=spec.get("width", 640),
                         fps=spec.get("fps", 12),
                         transport=spec.get("transport", "tcp"))
